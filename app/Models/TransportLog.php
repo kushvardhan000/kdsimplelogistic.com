@@ -18,6 +18,7 @@ class TransportLog extends Model
         'company',
         'transport_name',
         'logsheet_no',
+        'trace_code',
         'destination',
         'km',
         'weight',
@@ -52,6 +53,8 @@ class TransportLog extends Model
         'carrier_id',
         'branch_id',
         'fuel_station_id',
+        'created_at',
+        'updated_at',
     ];
 
     protected $casts = [

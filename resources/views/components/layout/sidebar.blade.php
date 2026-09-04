@@ -61,6 +61,40 @@
                         <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
                         <span x-show="!sidebarIconOnly" x-cloak class="transition-opacity duration-200 whitespace-nowrap">Users</span>
                     </a>
+
+                    <div x-data="{ accountsOpen: false }">
+                        <button type="button" @click="accountsOpen = !accountsOpen" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50">
+                            <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                            <span x-show="!sidebarIconOnly" x-cloak class="flex-1 text-left transition-opacity duration-200 whitespace-nowrap">Accounts</span>
+                            <svg x-show="!sidebarIconOnly" x-cloak class="h-4 w-4 transition-transform duration-200" :class="accountsOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div x-show="accountsOpen" x-cloak x-transition class="mt-1 space-y-1 pl-10">
+                            <a href="{{ route('accounts.index') }}"
+                               class="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                               :class="isActive('{{ route('accounts.index') }}')
+                                    ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                                    : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50'">
+                                All Accounts
+                            </a>
+                            <a href="{{ route('accounts.index', ['type' => 'fuel_station']) }}"
+                               class="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50">
+                                Fuel Stations
+                            </a>
+                            <a href="{{ route('accounts.index', ['type' => 'motor_parts_shop']) }}"
+                               class="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50">
+                                Motor Parts
+                            </a>
+                            <a href="{{ route('accounts.index', ['type' => 'staff']) }}"
+                               class="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50">
+                                Staff Salary
+                            </a>
+                            <a href="{{ route('accounts.index', ['type' => 'company_expense']) }}"
+                               class="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50">
+                                Company Expense
+                            </a>
+                        </div>
+                    </div>
+
                     <a href="{{ route('activity-logs.index') }}"
                        class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors relative"
                        :class="isActive('{{ route('activity-logs.index') }}')

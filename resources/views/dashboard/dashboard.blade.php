@@ -28,8 +28,16 @@
         <x-ui.kpi-card title="Monthly Profit" :value="$currency($monthlyProfit)" />
         <x-ui.kpi-card title="Pending Vehicle Payments" :value="$currency($pendingVehiclePayments)" />
         <x-ui.kpi-card title="Pending Fuel Station Balance" :value="$currency($pendingFuelBalance)" />
+        <x-ui.kpi-card title="Pending Fuel Settlements" :value="$pendingFuelSettlementsCount . ' logs · ' . $currency($pendingFuelSettlementsDue)" />
         <x-ui.kpi-card title="Total Advances" :value="$currency($totalAdvances)" />
         <x-ui.kpi-card title="Total Expenses" :value="$currency($totalExpenses)" />
+
+        @if(auth()->user()?->isSuperAdmin())
+            <x-ui.kpi-card title="Total Fuel Station Dues" :value="$currency($totalFuelStationDues ?? 0)" />
+            <x-ui.kpi-card title="Total Motor Parts Dues" :value="$currency($totalMotorPartsDues ?? 0)" />
+            <x-ui.kpi-card title="Monthly Staff Salary Paid" :value="$currency($monthlyStaffSalaryPaid ?? 0)" />
+            <x-ui.kpi-card title="Monthly Company Expenses" :value="$currency($monthlyCompanyExpenses ?? 0)" />
+        @endif
     </div>
 
     <div class="grid min-w-0 gap-6 lg:grid-cols-3">

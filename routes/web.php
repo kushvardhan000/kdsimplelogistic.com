@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AccountTransactionController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\PasswordResetController;
@@ -40,6 +42,9 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
 Route::middleware(['auth', 'active', 'no.cache'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+    Route::get('/trace/{trace_code}', [App\Http\Controllers\TraceController::class, 'show'])
+        ->name('trace.show');
+
     /*
      * Transport logs (Admin & Super Admin)
      */
@@ -73,6 +78,14 @@ Route::middleware(['auth', 'active', 'no.cache'])->group(function () {
         Route::resource('activity-logs', ActivityLogController::class)
             ->parameters(['activity-logs' => 'activity_log'])
             ->only(['index', 'show']);
+
+        Route::resource('accounts', AccountController::class);
+        Route::get('/accounts/transport-logs/search', [AccountController::class, 'searchTransportLogs'])->name('accounts.transport-logs.search');
+        Route::get('/accounts/{account}/pump-flow', [AccountController::class, 'pumpFlow'])->name('accounts.pump-flow');
+        Route::get('/accounts/{account}/transactions/{transaction}/edit', [AccountTransactionController::class, 'edit'])->name('accounts.transactions.edit');
+        Route::post('/accounts/{account}/transactions', [AccountTransactionController::class, 'store'])->name('accounts.transactions.store');
+        Route::put('/accounts/{account}/transactions/{transaction}', [AccountTransactionController::class, 'update'])->name('accounts.transactions.update');
+        Route::delete('/accounts/{account}/transactions/{transaction}', [AccountTransactionController::class, 'destroy'])->name('accounts.transactions.destroy');
     });
 });
 

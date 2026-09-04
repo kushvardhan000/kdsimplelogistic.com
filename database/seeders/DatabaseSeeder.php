@@ -96,5 +96,7 @@ class DatabaseSeeder extends Seeder
             ->create([
                 'user_id' => $admins[array_rand($admins)],
             ]);
+
+        $this->call(AccountSeeder::class);
     }
 }

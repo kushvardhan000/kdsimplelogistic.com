@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\TransportLog;
 use App\Models\ActivityLog;
+use App\Models\AccountTransaction;
 use App\Models\FuelStation;
 use App\Models\Branch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,5 +61,15 @@ class ObserverLedgerActivityTest extends TestCase
             collect($debit->changes)->contains(fn ($change) => $change['field'] === 'amount' && $change['new'] == 500),
             'Changes payload should contain the amount field with value 500'
         );
+
+        $transaction = AccountTransaction::where('reference_type', TransportLog::class)
+            ->where('reference_id', $log->id)
+            ->whereNull('deleted_at')
+            ->first();
+
+        $this->assertNotNull($transaction, 'Mirrored account transaction should exist');
+        $this->assertEquals('debit', $transaction->direction);
+        $this->assertEquals(500, $transaction->amount);
+        $this->assertEquals($log->id, $transaction->reference_id);
     }
 }

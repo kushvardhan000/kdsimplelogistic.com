@@ -29,21 +29,31 @@
     method="GET"
     action="{{ route('transport-logs.index') }}"
     class="hidden flex-1 justify-center px-4 md:flex lg:px-6"
+    x-data="{
+        value: '{{ addslashes(request('search')) }}',
+        submit() {
+            const v = this.value.trim();
+            if (v.startsWith('TL-') || /^TL-\d{6}$/.test(v)) {
+                window.location.href = '/trace/' + encodeURIComponent(v);
+            } else {
+                this.$el.submit();
+            }
+        }
+    }"
+    @submit.prevent="submit()"
 >
     <div class="relative w-full max-w-xl xl:max-w-2xl">
         <input
             type="text"
             name="search"
-            placeholder="Search transport logs..."
-            value="{{ request('search') }}"
+            placeholder="Search transport logs or paste a trace code..."
+            x-model="value"
             class="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-10 pr-4 text-sm shadow-sm transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         />
 
         <svg
             class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
         >
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

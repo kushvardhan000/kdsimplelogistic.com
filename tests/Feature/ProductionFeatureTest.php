@@ -663,6 +663,12 @@ class ProductionFeatureTest extends TestCase
             'paid_sale' => 0,
             'to_pay' => 0,
             'freight' => 0,
+            'loading' => 0,
+            'unloading' => 0,
+            'dd' => 0,
+            'tempu_expense' => 0,
+            'commission' => 0,
+            'dtg_office_expense' => 0,
             'company' => 'Acme Logistics',
             'vehicle_no' => 'MATCH01',
         ]);

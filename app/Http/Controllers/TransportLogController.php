@@ -8,6 +8,7 @@ use App\Models\StationDebit;
 use App\Models\TransportLog;
 use App\Exports\TransportLogsExport;
 use App\Services\ActivityLogger;
+use App\Services\AccountLedgerService;
 use App\Services\TransportLogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,13 +28,20 @@ class TransportLogController extends Controller
     ];
 
     public function __construct(
-        private TransportLogService $totals
+        private TransportLogService $totals,
+        private AccountLedgerService $ledger
     ) {
         $this->authorizeResource(TransportLog::class, 'transport_log');
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): View|\Illuminate\Http\RedirectResponse
     {
+        $search = $request->string('search');
+
+        if ($search !== '' && TransportLog::where('trace_code', $search)->exists()) {
+            return redirect()->route('trace.show', $search);
+        }
+
         $query = TransportLog::with(['creator', 'editor', 'vehicle', 'company', 'carrier', 'branch', 'fuelStation']);
 
         $query = $this->applyTransportLogFilters($query, $request);
@@ -55,7 +63,32 @@ class TransportLogController extends Controller
 
     public function create(): View
     {
-        return view('logs.create');
+        return view('logs.create', $this->formViewData(null));
+    }
+
+    private function formViewData(?TransportLog $log): array
+    {
+        $fuelStations = \App\Models\FuelStation::where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(function ($station) {
+                $account = \App\Models\Account::where('type', 'fuel_station')
+                    ->where('linked_fuel_station_id', $station->id)
+                    ->first();
+
+                return [
+                    'id' => $station->id,
+                    'name' => $station->name,
+                    'branch' => $station->branch?->name,
+                    'current_balance' => $account ? (float) $account->current_balance : 0.0,
+                ];
+            })
+            ->values();
+
+        return [
+            'log' => $log,
+            'fuelStations' => $fuelStations,
+        ];
     }
 
     public function store(StoreTransportLogRequest $request): RedirectResponse
@@ -89,7 +122,27 @@ class TransportLogController extends Controller
 
     public function show(TransportLog $transportLog): View
     {
-        return view('logs.show', ['transportLog' => $transportLog->load('creator', 'editor', 'vehicle', 'company', 'carrier', 'branch', 'fuelStation')]);
+        $transportLog->load('creator', 'editor', 'vehicle', 'company', 'carrier', 'branch', 'fuelStation');
+
+        $fuelSettlementService = app(\App\Services\FuelSettlementService::class);
+        $fuelPaymentHistory = [];
+        $fuelRemainingDue = 0;
+        $fuelPaymentStatus = 'unpaid';
+        $fuelStationAccount = null;
+
+        if ($transportLog->fuel_station_id) {
+            $fuelStationAccount = \App\Models\Account::where('type', 'fuel_station')
+                ->where('linked_fuel_station_id', $transportLog->fuel_station_id)
+                ->first();
+
+            if ($fuelStationAccount) {
+                $fuelPaymentHistory = $fuelSettlementService->getPaymentHistoryForLog($transportLog);
+                $fuelRemainingDue = $fuelSettlementService->getRemainingDue($transportLog);
+                $fuelPaymentStatus = $transportLog->fuel_payment_status ?? 'unpaid';
+            }
+        }
+
+        return view('logs.show', compact('transportLog', 'fuelStationAccount', 'fuelPaymentHistory', 'fuelRemainingDue', 'fuelPaymentStatus'));
     }
 
     public function exportSingle(TransportLog $transportLog, Request $request)
@@ -162,7 +215,9 @@ class TransportLogController extends Controller
 
     public function edit(TransportLog $transportLog): View
     {
-        return view('logs.edit', ['transportLog' => $transportLog->load('creator', 'editor', 'vehicle', 'company', 'carrier', 'branch', 'fuelStation')]);
+        $data = $this->formViewData($transportLog->load('creator', 'editor', 'vehicle', 'company', 'carrier', 'branch', 'fuelStation'));
+        $data['transportLog'] = $data['log'];
+        return view('logs.edit', $data);
     }
 
     public function update(UpdateTransportLogRequest $request, TransportLog $transportLog): RedirectResponse
@@ -219,7 +274,8 @@ class TransportLogController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('vehicle_no', 'like', "%{$search}%")
                   ->orWhere('company', 'like', "%{$search}%")
-                  ->orWhere('transport_name', 'like', "%{$search}%");
+                  ->orWhere('transport_name', 'like', "%{$search}%")
+                  ->orWhere('trace_code', 'like', "%{$search}%");
             });
         }
 
@@ -228,7 +284,7 @@ class TransportLogController extends Controller
         }
 
         if ($request->filled('status')) {
-            $status = $request->string('status');
+            $status = (string) $request->string('status');
 
             if ($status === 'profit') {
                 $query->where('profit', '>', 0);

@@ -153,6 +153,19 @@ class ComputedBreakdownTest extends TestCase
         $response->assertSee(number_format(500, 2));
     }
 
+    public function test_show_page_contains_fuel_station_ledger_section_when_fuel_station_id_set(): void
+    {
+        $this->actingAsSuperAdmin();
+
+        $log = $this->createLogForBreakdown();
+
+        $response = $this->get('/transport-logs/' . $log->id);
+
+        $response->assertOk();
+        $response->assertSee('Payment History for This Log');
+        $response->assertSee('Unpaid');
+    }
+
     // -------------------------------------------------------------------------
     // Surface 2: Edit page pre-filled breakdowns
     // -------------------------------------------------------------------------

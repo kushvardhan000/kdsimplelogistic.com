@@ -110,6 +110,89 @@ Alpine.data('transportForm', () => ({
     }
 }));
 
+Alpine.data('fuelStationPicker', (config) => ({
+    stations: config.stations || [],
+    createUrl: config.createUrl,
+    query: config.initialName || '',
+    selectedId: config.initialId || null,
+    open: false,
+    highlighted: 0,
+    error: false,
+
+    init() {
+        if (this.selectedId) {
+            const match = this.stations.find(s => Number(s.id) === Number(this.selectedId));
+            if (match) {
+                this.query = match.name;
+            }
+        }
+    },
+
+    get filtered() {
+        const q = (this.query || '').toLowerCase().trim();
+        if (!q) return this.stations;
+        return this.stations.filter(s => {
+            const name = (s.name || '').toLowerCase();
+            const branch = (s.branch || '').toLowerCase();
+            return name.includes(q) || branch.includes(q);
+        });
+    },
+
+    get selectedStation() {
+        if (!this.selectedId) return null;
+        return this.stations.find(s => Number(s.id) === Number(this.selectedId)) || null;
+    },
+
+    get selectedBalance() {
+        return this.selectedStation ? Number(this.selectedStation.current_balance) : 0;
+    },
+
+    get hasExactMatch() {
+        const q = (this.query || '').trim().toLowerCase();
+        return this.stations.some(s => (s.name || '').toLowerCase() === q);
+    },
+
+    filter() {
+        this.open = true;
+        this.highlighted = 0;
+    },
+
+    move(direction) {
+        if (!this.open) {
+            this.open = true;
+            return;
+        }
+        const max = this.filtered.length;
+        if (max === 0) return;
+        this.highlighted = (this.highlighted + direction + max) % max;
+    },
+
+    selectHighlighted() {
+        const list = this.filtered;
+        if (list.length === 0) return;
+        this.select(list[this.highlighted]);
+    },
+
+    select(station) {
+        this.selectedId = station.id;
+        this.query = station.name;
+        this.open = false;
+        this.error = false;
+        this.$nextTick(() => {
+            const fuelName = document.querySelector('input[name="fuel_station_name"]');
+            if (fuelName) fuelName.value = station.name;
+        });
+    },
+
+    clear() {
+        this.selectedId = null;
+        this.query = '';
+        this.error = false;
+        const fuelName = document.querySelector('input[name="fuel_station_name"]');
+        if (fuelName) fuelName.value = '';
+    }
+}));
+
 Alpine.start();
 
 window.addEventListener('DOMContentLoaded', () => {

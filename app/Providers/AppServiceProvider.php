@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\Account;
+use App\Models\AccountTransaction;
 use App\Models\ActivityLog;
 use App\Models\TransportLog;
 use App\Models\User;
+use App\Observers\AccountTransactionObserver;
 use App\Observers\TransportLogObserver;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
@@ -15,6 +18,8 @@ class AppServiceProvider extends ServiceProvider
         TransportLog::class => \App\Policies\TransportLogPolicy::class,
         User::class => \App\Policies\UserPolicy::class,
         ActivityLog::class => \App\Policies\ActivityLogPolicy::class,
+        Account::class => \App\Policies\AccountPolicy::class,
+        AccountTransaction::class => \App\Policies\AccountTransactionPolicy::class,
     ];
 
     public function register(): void
@@ -30,5 +35,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('activate-user', fn (User $user) => $user->isActive() && $user->isSuperAdmin());
 
         TransportLog::observe(TransportLogObserver::class);
+        AccountTransaction::observe(AccountTransactionObserver::class);
     }
 }

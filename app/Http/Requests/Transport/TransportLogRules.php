@@ -31,6 +31,7 @@ trait TransportLogRules
             'diesel_advance' => $decimal,
             'cash_advance' => $decimal,
             'payment' => $decimal,
+            'fuel_station_id' => ['nullable', 'integer', 'exists:fuel_stations,id'],
             'fuel_station_name' => ['nullable', 'string', 'max:255'],
             'fuel_station_balance' => $decimal,
             'clearing_date' => ['nullable', 'date', 'after_or_equal:date'],
