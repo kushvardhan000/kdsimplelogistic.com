@@ -10,7 +10,7 @@
         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Update details for {{ $account->name }}.</p>
     </div>
 
-    <form method="POST" action="{{ route('accounts.update', $account) }}" class="mt-6 space-y-6" x-data='{ selectedType: @json(old("type", $account->type)) }'>
+    <form method="POST" action="{{ route('accounts.update', $account) }}" class="mt-6 space-y-6" x-data='{ selectedType: @json(old("type", $account->type)), isDriver: @json(old("is_driver", (bool) $account->linked_driver_id)), linkedDriverId: @json(old("linked_driver_id", $account->linked_driver_id ?? "")) }'>
         @csrf
         @method('PUT')
 
@@ -59,13 +59,38 @@
                 </div>
 
                 <div x-show="selectedType === 'staff'" x-cloak x-transition>
+                    <label for="aadhar_no" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Aadhar No. <span class="text-red-500">*</span></label>
+                    <input type="text" name="aadhar_no" id="aadhar_no" value="{{ old('aadhar_no', $account->aadhar_no) }}" maxlength="12" placeholder="XXXX XXXX XXXX" x-on:input="$el.value = $el.value.replace(/\\D/g, '').replace(/(\\d{4})(?=\\d)/g, '$1 ')" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">12-digit Aadhar number (e.g. 1234 5678 9012)</p>
+                    @error('aadhar_no')
+                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div x-show="selectedType === 'staff'" x-cloak x-transition>
                     <label for="linked_driver_id" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Linked Driver</label>
-                    <select name="linked_driver_id" id="linked_driver_id" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                    <select name="linked_driver_id" id="linked_driver_id" x-model="linkedDriverId" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
                         <option value="">Select driver</option>
                         @foreach($drivers as $driver)
-                            <option value="{{ $driver->id }}" {{ old('linked_driver_id', $account->linked_driver_id) == $driver->id ? 'selected' : '' }}>{{ $driver->name }}</option>
+                            <option value="{{ $driver->id }}" {{ old('linked_driver_id', $account->linked_driver_id) == $driver->id ? 'selected' : '' }}>{{ $driver->name }} ({{ $driver->license_no }})</option>
                         @endforeach
                     </select>
+                </div>
+
+                <div x-show="selectedType === 'staff'" x-cloak x-transition class="sm:col-span-2">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" name="is_driver" id="is_driver" value="1" x-model="isDriver" {{ old('is_driver', $account->is_driver ?? false) ? 'checked' : '' }} class="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900">
+                        <label for="is_driver" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">This staff member is a driver</label>
+                    </div>
+                </div>
+
+                <div x-show="selectedType === 'staff' && (isDriver || linkedDriverId)" x-cloak x-transition>
+                    <label for="driving_license_no" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Driving License No. <span class="text-red-500">*</span></label>
+                    <input type="text" name="driving_license_no" id="driving_license_no" value="{{ old('driving_license_no', $account->driving_license_no) }}" placeholder="e.g. DL1420110012345" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Alphanumeric, 8–20 characters</p>
+                    @error('driving_license_no')
+                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
                 </div>
 
                 <div>

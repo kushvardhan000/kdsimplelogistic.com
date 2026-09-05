@@ -73,6 +73,8 @@ class AccountLedgerTest extends TestCase
             'name' => 'Test Staff',
             'linked_driver_id' => $driver->id,
             'branch_id' => $branch->id,
+            'aadhar_no' => '123456789012',
+            'driving_license_no' => 'DL1420110012345',
             'opening_balance' => 0,
             'is_active' => 1,
         ]);
@@ -883,6 +885,8 @@ class AccountLedgerTest extends TestCase
             'linked_fuel_station_id' => '',
             'linked_driver_id' => $driver->id,
             'branch_id' => $branch->id,
+            'aadhar_no' => '999999999999',
+            'driving_license_no' => 'DL9999999999999',
             'opening_balance' => 0,
             'is_active' => '1',
         ]);
@@ -1075,6 +1079,8 @@ class AccountLedgerTest extends TestCase
             'type' => 'staff',
             'name' => 'Listed Staff',
             'branch_id' => $branch->id,
+            'aadhar_no' => '888888888888',
+            'driving_license_no' => 'DL8888888888888',
             'opening_balance' => 0,
             'is_active' => '1',
         ]);

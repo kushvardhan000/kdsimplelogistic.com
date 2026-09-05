@@ -148,7 +148,7 @@ D:\transport\
 │
 ├── database/
 │   ├── factories/                   # 12 factories
-│   ├── migrations/                  # 21 migrations
+│   ├── migrations/                  # 22 migrations
 │   └── seeders/                     # DatabaseSeeder + 6 individual seeders
 │
 ├── resources/
@@ -413,10 +413,11 @@ D:\transport\
 - Relationships: hasMany TransportLog (created_by), hasMany ActivityLog, belongsTo Branch
 
 ### Account
-- Fillable: type, name, linked_fuel_station_id, linked_driver_id, branch_id, contact_info, address, opening_balance, current_balance, is_active, created_by, updated_by
-- Casts: opening_balance (decimal:2), current_balance (decimal:2), is_active (boolean)
+- Fillable: type, name, linked_fuel_station_id, linked_driver_id, branch_id, contact_info, address, opening_balance, current_balance, is_active, metadata, aadhar_no, driving_license_no, created_by, updated_by
+- Casts: opening_balance (decimal:2), current_balance (decimal:2), is_active (boolean), metadata (array)
 - Relationships: belongsTo FuelStation, belongsTo Driver, belongsTo Branch, hasMany AccountTransaction
 - Types: fuel_station, motor_parts_shop, staff, company_expense
+- Staff-specific: `aadhar_no` (string, globally unique, 12 digits), `driving_license_no` (string, nullable unless is_driver or linked_driver_id is set)
 
 ### AccountTransaction
 - Fillable: account_id, branch_id, direction, amount, payment_mode, payment_plan, installment_no, installment_total, reference_type, reference_id, description, attachment_path, transaction_date, running_balance, created_by, updated_by
@@ -590,6 +591,7 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - `php artisan accounts:verify-integrity` command scans for orphaned fuel-station accounts, missing accounts, running-balance drift, and fuel-settlement drift
 - Fuel station accounts use a simplified step-based flow (`accounts?type=fuel_station&selected={id}`) as the single canonical view; direct hits to `accounts/{id}` for fuel_station type redirect to that flow
 - Edit and Delete actions are available inline on account detail views for all 4 types (fuel station pump header + account cards for other types)
+- Staff accounts have mandatory identity fields: `aadhar_no` (required, exactly 12 digits, globally unique) and conditional `driving_license_no` (required when the staff member is marked as a driver via `is_driver` checkbox or when `linked_driver_id` is set). Aadhar is displayed masked on the show page (e.g. "XXXX XXXX 9012"). See `resources/views/accounts/create.blade.php`, `resources/views/accounts/edit.blade.php`, and `app/Http/Requests/Account/StoreAccountRequest.php`.
 
 ### Fuel Station Picker (Transport Log Forms)
 - The `fuel_station_name` field on `resources/views/logs/_form.blade.php` has been replaced with a proper searchable dropdown (combobox/typeahead).
@@ -623,8 +625,8 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - Transport log show page shows "Payment History for This Log" panel with status badge, progress bar, and chronological transaction list
 - "Record Payment" button on transport log show page opens transaction modal pre-linked to that log
 - Transport log edit page shows compact read-only fuel settlement status and payment history
-- Master-detail fuel station accounts page (accounts?type=fuel_station) with Alpine.js two-pane layout: pump picker list + live ledger fragment
-- Transport log search endpoint (GET /accounts/transport-logs/search) for linking payments to logs via type-ahead
+- Master-detail fuel station accounts page (`accounts?type=fuel_station`) with Alpine.js two-pane layout: pump picker list + live ledger fragment. Transactions can be initiated directly from the pump detail view via the "+ Add Transaction" button, which opens the same `transaction-form-modal` component used elsewhere. The modal pre-fills `account_id` to the selected pump, supports optional transport log linking via the existing `/accounts/transport-logs/search` type-ahead, and calls the exact same `AccountLedgerService::createTransaction()` path as all other entry points.
+- Transport log search endpoint (GET /accounts/transport-logs/search) for linking payments to logs via type-ahead; returns `destination` and `driver_name` (from the linked vehicle's first driver) in addition to the existing fields
 - Supports flexible multi-part settlements: pay nothing first, partial second, rest on third — each as separate account_transaction
 - AccountTransaction mirroring: creates debit transactions in account_transactions table for diesel advances; recalculates running balances on changes
 - Fuel Station Ledger section rendered on transport log show page via AccountLedgerService::getBalanceSummary() and getFilteredTransactions()
@@ -715,6 +717,8 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - `FuelSettlementEdgeCasesTest.php`: 8 tests covering the finalized fuel settlement edge-case policies — no-fuel-component returns null status, editing advance up/down recalculates correctly, soft-delete preserves account transactions, restore re-syncs settlement, strict reference pair, out-of-order deletes remain sane, concurrent writes are safely serialized.
 - `FuelStationComboboxTest.php`: 4 tests — valid `fuel_station_id` succeeds and links correctly, invalid `fuel_station_id` returns a validation error, null `fuel_station_id` succeeds, and create form renders the active stations list.
 - `FuelStationDisplayRegressionTest.php`: 3 regression tests — legacy log with only `fuel_station_name` and no `fuel_station_id` displays gracefully on show/edit, log with no fuel component correctly omits the Payment History panel, and a log with a real `fuel_station_id` renders the station name as a link to its ledger.
+- `PumpDetailTransactionTest.php`: 5 tests — adding transaction from pump detail with linked transport log updates settlement, adding without linked log doesn't touch transport logs, transport log search returns destination and driver, pump detail page shows add transaction button and modal, completing payment from pump detail marks log as paid.
+- `StaffAccountIdentityTest.php`: 7 tests — staff account creation requires aadhar_no, rejects invalid aadhar formats (letters/wrong length), requires driving_license_no when is_driver is checked, accepts valid staff+driver submissions, show page displays masked aadhar and license, non-staff accounts don't require aadhar, and aadhar_no is globally unique.
 - `UsersIndexTest.php`: 1 test — confirms `/users` returns exactly the seeded super_admin + admin count and contains none of the seeded driver names.
 
 ## 11. Developer Orientation Guide — Where to Find Everything
@@ -739,6 +743,7 @@ This section is a practical, task-oriented map for anyone new to the codebase. I
 | Change the trace lookup page | `app/Http/Controllers/TraceController.php` + `resources/views/trace/show.blade.php` |
 | Change how activity logging works | `app/Services/ActivityLogger.php` + `app/Http/Middleware/LogActivity.php` |
 | Change the fuel station picker on transport log forms | `resources/views/logs/_form.blade.php` + `fuelStationPicker` Alpine component in `resources/js/app.js` + `app/Http/Controllers/TransportLogController.php` (`formViewData()`) |
+| Change staff account identity fields (Aadhar / driving license) | `app/Http/Requests/Account/StoreAccountRequest.php` + `resources/views/accounts/create.blade.php` + `resources/views/accounts/edit.blade.php` + `resources/views/accounts/show.blade.php` |
 
 ### 2. Request lifecycle walkthrough: "What happens when a Super Admin records a fuel payment"
 
@@ -785,7 +790,7 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 |------|----------------------|
 | **trace_code** | A unique, human-readable ID printed on every transport log (format `TL-000001`). It lets anyone with access look up that log's financials via `/trace/{trace_code}` without knowing the internal database ID. |
 | **running_balance** | The balance of an account **after** each individual transaction, stored directly on the `account_transactions` row. It makes it fast to show "balance at this point in history" without recalculating from scratch. It is always kept in sync by the service layer. |
-| **fuel_payment_status** | A cached flag on `transport_logs` (`unpaid` / `partial` / `paid` / `overpaid`) that summarizes how much of the diesel advance has been settled via credit transactions in the accounts system. |
+| **fuel_payment_status** | A cached flag on `transport_logs` (`unpaid` / `partial` / `paid` / `overpaid`, or NULL when the log has no fuel component) that summarizes how much of the diesel advance has been settled via credit transactions in the accounts system. |
 | **Account** | The "ledger header" for a counter-party — e.g. a fuel pump, a motor parts shop, a driver (staff), or an expense category. It has an opening balance and a current balance. |
 | **AccountTransaction** | A single financial event (debit or credit) against an Account. This is the table where all money movement is recorded. |
 | **StationDebit / StationCredit** | Legacy tables that predate the full Accounts system. They still get created automatically when a transport log has a diesel advance (debit) or when a fuel payment is recorded (credit), but the **Accounts system is now the source of truth**. The legacy tables exist mainly for backward compatibility and historical reporting. |
@@ -809,3 +814,6 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 8. **Copy button UX**: Both the transport log show page and the trace lookup page now use an inline Alpine-powered copy interaction. Clicking the copy button shows a green checkmark + "Copied!" text for 1.5 seconds, replacing the previous `alert()` popup.
 9. **trace_code search**: The transport logs index search now matches against `trace_code` in addition to `vehicle_no`, `company`, and `transport_name`. The global header search detects exact trace_code matches and redirects straight to `/trace/{trace_code}`, while partial matches fall through to the normal transport logs search results.
 10. **Trace page enrichment**: The `/trace/{trace_code}` page now displays creator/editor names, vehicle, company, carrier, branch, and direct links to the transport log's show and edit pages, making it the definitive "everything related to this log" view.
+11. **Staff identity fields**: Staff accounts (`type = staff`) now require `aadhar_no` (12 digits, globally unique) and conditionally require `driving_license_no` when the staff member is marked as a driver (`is_driver` checkbox or `linked_driver_id` is set). The Aadhar is displayed masked on the show page (e.g. "XXXX XXXX 9012"). These fields are stored as raw columns on the `accounts` table (not in `metadata`), with a unique index on `aadhar_no`.
+12. **Fuel station picker on transport log forms**: The free-text `fuel_station_name` input has been replaced with an Alpine-powered searchable combobox (`fuelStationPicker` in `resources/js/app.js`) that lists active fuel stations with live balance previews. It also offers an "Add new station" inline flow that opens `accounts.create?type=fuel_station` in a new tab.
+13. **Pump detail transaction flow**: Adding a transaction from a pump's detail view (`accounts?type=fuel_station&selected={id}`) uses the exact same `transaction-form-modal` component and `AccountLedgerService::createTransaction()` code path as all other entry points. The modal pre-fills `account_id` to the selected pump, optionally links to a transport log via the existing `/accounts/transport-logs/search` type-ahead (now returning `destination` and `driver_name`), and correctly triggers the observer chain to update linked transport log settlement status.

@@ -24,6 +24,8 @@ class Account extends Model
         'current_balance',
         'is_active',
         'metadata',
+        'aadhar_no',
+        'driving_license_no',
         'created_by',
         'updated_by',
     ];

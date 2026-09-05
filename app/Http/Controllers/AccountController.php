@@ -134,7 +134,8 @@ class AccountController extends Controller
         ]);
 
         $query = \App\Models\TransportLog::query()
-            ->select('id', 'vehicle_no', 'logsheet_no', 'date', 'diesel_advance', 'fuel_station_id', 'branch_id')
+            ->select('id', 'vehicle_no', 'logsheet_no', 'date', 'diesel_advance', 'fuel_station_id', 'branch_id', 'destination', 'vehicle_id')
+            ->with('vehicle.drivers')
             ->where(function ($q) use ($request) {
                 $term = $request->string('q');
                 $q->where('vehicle_no', 'like', '%' . $term . '%')
@@ -153,11 +154,18 @@ class AccountController extends Controller
                 ->whereNull('deleted_at')
                 ->sum('amount');
 
+            $driverName = null;
+            if ($log->vehicle && $log->vehicle->drivers()->exists()) {
+                $driverName = $log->vehicle->drivers()->first()?->name;
+            }
+
             return [
                 'id' => $log->id,
                 'vehicle_no' => $log->vehicle_no,
                 'logsheet_no' => $log->logsheet_no,
                 'date' => $log->date?->format('Y-m-d'),
+                'destination' => $log->destination,
+                'driver_name' => $driverName,
                 'diesel_advance' => (float) $log->diesel_advance,
                 'paid_amount' => round((float) $paid, 2),
                 'remaining_due' => round(max(0, (float) $log->diesel_advance - (float) $paid), 2),

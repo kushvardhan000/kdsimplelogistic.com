@@ -1,4 +1,11 @@
 <div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div></div>
+        <button type="button" @click="$dispatch('open-modal', 'transaction-modal-{{ $account->id }}')" class="inline-flex h-9 items-center justify-center rounded-lg bg-brand-600 px-4 text-sm font-medium text-white shadow-premium-sm hover:bg-brand-700">
+            + Add Transaction
+        </button>
+    </div>
+
     <div class="grid gap-4 sm:grid-cols-3">
         <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-premium-sm dark:border-zinc-800 dark:bg-zinc-900">
             <p class="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Current Balance</p>

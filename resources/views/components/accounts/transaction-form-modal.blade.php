@@ -194,11 +194,20 @@
 
                     <div x-show="selectedTransportLog" x-transition class="mt-3 rounded-lg border border-brand-200 bg-brand-50 p-3 dark:border-brand-800 dark:bg-brand-950/30">
                         <div class="flex items-start justify-between">
-                            <div>
+                            <div class="space-y-1">
                                 <p class="text-sm font-medium text-brand-900 dark:text-brand-100">
                                     Transport Log #<span x-text="selectedTransportLog?.id"></span>
                                 </p>
-                                <p class="text-xs text-brand-700 dark:text-brand-300 mt-0.5">
+                                <p class="text-xs text-brand-700 dark:text-brand-300">
+                                    Vehicle: <span x-text="selectedTransportLog?.vehicle_no"></span>
+                                </p>
+                                <p class="text-xs text-brand-700 dark:text-brand-300" x-show="selectedTransportLog?.driver_name">
+                                    Driver: <span x-text="selectedTransportLog?.driver_name"></span>
+                                </p>
+                                <p class="text-xs text-brand-700 dark:text-brand-300" x-show="selectedTransportLog?.destination">
+                                    Destination: <span x-text="selectedTransportLog?.destination"></span>
+                                </p>
+                                <p class="text-xs text-brand-700 dark:text-brand-300">
                                     Diesel Advance: <span x-text="formatCurrency(dieselAdvance)"></span>
                                 </p>
                                 <p class="text-xs text-brand-700 dark:text-brand-300">
