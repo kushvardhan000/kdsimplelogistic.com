@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\Logsheet;
+use App\Observers\LogsheetObserver;
 use App\Models\Account;
 use App\Models\AccountTransaction;
 use App\Models\ActivityLog;
@@ -36,5 +38,6 @@ class AppServiceProvider extends ServiceProvider
 
         TransportLog::observe(TransportLogObserver::class);
         AccountTransaction::observe(AccountTransactionObserver::class);
+        Logsheet::observe(LogsheetObserver::class);
     }
 }

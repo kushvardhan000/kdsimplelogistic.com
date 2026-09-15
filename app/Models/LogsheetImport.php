@@ -15,6 +15,7 @@ class LogsheetImport extends Model
         'date_from',
         'date_to',
         'original_filename',
+        'file_path',
         'uploaded_by',
         'row_count',
         'consolidated_count',

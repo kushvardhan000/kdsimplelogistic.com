@@ -34,8 +34,14 @@ class LogsheetController extends Controller
 
         $logsheets = $query->orderByDesc('date')->paginate(15)->withQueryString();
 
+        $summaryQuery = clone $query;
+
         return view('logsheets.index', [
             'logsheets' => $logsheets,
+            'totalImports' => $summaryQuery->count(),
+            'pendingCount' => (clone $summaryQuery)->where('status', 'pending')->count(),
+            'clearedCount' => (clone $summaryQuery)->where('status', 'cleared')->count(),
+            'totalGrossWt' => (clone $summaryQuery)->sum('total_gross_wt'),
             'dateFrom' => $request->input('date_from'),
             'dateTo' => $request->input('date_to'),
         ]);
@@ -98,5 +104,21 @@ class LogsheetController extends Controller
         });
 
         return back()->with('success', 'Log sheet cleared successfully.');
+    }
+
+    public function destroy(Logsheet $logsheet): RedirectResponse
+    {
+        $logsheet->delete();
+
+        return back()->with('success', 'Logsheet deleted successfully.');
+    }
+
+    public function download(LogsheetImport $import): RedirectResponse
+    {
+        if (!$import->file_path) {
+            return back()->with('error', 'No file found for this import.');
+        }
+
+        return Storage::disk('public')->download($import->file_path, $import->original_filename);
     }
 }

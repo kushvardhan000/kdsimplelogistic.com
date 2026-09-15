@@ -16,12 +16,14 @@ class LogsheetImportService
     {
         $user = Auth::user();
         $start = now()->toDateString();
+        $filePath = $file->store('logsheets', 'public');
 
-        return DB::transaction(function () use ($file, $user, $start) {
+        return DB::transaction(function () use ($file, $user, $start, $filePath) {
             $import = LogsheetImport::create([
                 'date_from' => $start,
                 'date_to' => $start,
                 'original_filename' => $file->getClientOriginalName(),
+                'file_path' => $filePath,
                 'uploaded_by' => $user?->id,
                 'row_count' => 0,
                 'consolidated_count' => 0,
