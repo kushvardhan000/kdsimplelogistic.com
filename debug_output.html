@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full antialiased" :class="{ 'dark': $store.theme.isDark }">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="">
+    <title>New Account · Transport</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="http://127.0.0.1:8000/build/assets/app-sTK9DiKX.css" /><link rel="modulepreload" href="http://127.0.0.1:8000/build/assets/app-B7pe7vi1.js" /><link rel="stylesheet" href="http://127.0.0.1:8000/build/assets/app-sTK9DiKX.css" /><script type="module" src="http://127.0.0.1:8000/build/assets/app-B7pe7vi1.js"></script></head>
+<body class="h-full bg-zinc-50 text-zinc-900 transition-colors duration-200 dark:bg-zinc-950 dark:text-zinc-50">
+    <div class="flex min-h-screen overflow-x-hidden" x-data="layout()" x-init="init()">
+        <!-- Mobile overlay -->
+        <div x-show="sidebarOpen" x-cloak class="fixed inset-0 z-30 bg-zinc-950/50 md:hidden" @click="sidebarOpen = false" x-transition.opacity></div>
+
+        <aside
+    x-cloak
+    class="fixed inset-y-0 left-0 z-40 flex flex-col border-r border-zinc-200 bg-white transition-all duration-300 ease-out-expo dark:border-zinc-800 dark:bg-zinc-900"
+    :class="(sidebarOpen || isDesktop) ? 'translate-x-0' : '-translate-x-full' + ' ' + (sidebarIconOnly ? 'w-16' : 'w-64')"
+>
+    <div class="flex h-16 items-center border-b border-zinc-200 px-4 dark:border-zinc-800">
+        <div class="flex items-center gap-2.5 overflow-hidden">
+            <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">T</div>
+            <span x-show="!sidebarIconOnly" x-cloak class="font-semibold text-zinc-950 dark:text-zinc-50 transition-opacity duration-200 whitespace-nowrap">Transport</span>
+        </div>
+    </div>
+
+    <nav class="flex-1 space-y-6 overflow-y-auto p-2 md:p-3">
+        <div>
+            <span x-show="!sidebarIconOnly" x-cloak class="px-3 text-xxs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 transition-opacity duration-200">Core</span>
+            <div class="mt-2 space-y-1">
+                <a href="http://127.0.0.1:8000/dashboard"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors relative"
+                   :class="isActive('http://127.0.0.1:8000/dashboard')
+                        ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                        : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50'"
+                   :title="sidebarIconOnly ? 'Dashboard' : ''">
+                    <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z"/></svg>
+                    <span x-show="!sidebarIconOnly" x-cloak class="transition-opacity duration-200 whitespace-nowrap">Dashboard</span>
+                </a>
+                <a href="http://127.0.0.1:8000/transport-logs"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors relative"
+                   :class="isActive('http://127.0.0.1:8000/transport-logs')
+                        ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                        : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50'"
+                   :title="sidebarIconOnly ? 'Transport Logs' : ''">
+                    <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <span x-show="!sidebarIconOnly" x-cloak class="transition-opacity duration-200 whitespace-nowrap">Transport Logs</span>
+                </a>
+                <a href="http://127.0.0.1:8000/settings"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors relative"
+                   :class="isActive('http://127.0.0.1:8000/settings')
+                        ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                        : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50'"
+                   :title="sidebarIconOnly ? 'Settings' : ''">
+                    <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span x-show="!sidebarIconOnly" x-cloak class="transition-opacity duration-200 whitespace-nowrap">Settings</span>
+                </a>
+            </div>
+        </div>
+
+            </nav>
+
+    <div class="border-t border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/50">
+        <div class="flex items-center gap-3">
+            <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">
+                A
+            </div>
+            <div x-show="!sidebarIconOnly" x-cloak class="min-w-0 flex-1 transition-opacity duration-200">
+                <p class="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">Admin</p>
+                <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">admin@transport.app</p>
+            </div>
+        </div>
+    </div>
+</aside>
+
+        <div class="flex flex-1 flex-col overflow-x-hidden transition-all duration-300 ease-out-expo"
+             :class="isDesktop ? (sidebarIconOnly ? 'md:ml-16' : 'md:ml-64') : ''">
+            <header class="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-zinc-200 bg-zinc-50/80 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80 sm:px-6 lg:px-8">
+    <button
+        type="button"
+        @click="toggleSidebar()"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800 md:hidden"
+        aria-label="Toggle sidebar"
+    >
+        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
+    <button
+        type="button"
+        @click="toggleSidebar()"
+        class="hidden h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800 md:flex"
+        aria-label="Toggle sidebar"
+        title="Toggle sidebar"
+    >
+        <svg x-show="!sidebarIconOnly" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 7l-7 7 7 7"/></svg>
+        <svg x-show="sidebarIconOnly" x-cloak class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+    </button>
+
+    <h1 class="truncate text-base font-semibold text-zinc-950 dark:text-zinc-50">Transport</h1>
+
+    <form
+    method="GET"
+    action="http://127.0.0.1:8000/transport-logs"
+    class="hidden flex-1 justify-center px-4 md:flex lg:px-6"
+    x-data="{
+        value: '',
+        submit() {
+            const v = this.value.trim();
+            if (v.startsWith('TL-') || /^TL-\d{6}$/.test(v)) {
+                window.location.href = '/trace/' + encodeURIComponent(v);
+            } else {
+                this.$el.submit();
+            }
+        }
+    }"
+    @submit.prevent="submit()"
+>
+    <div class="relative w-full max-w-xl xl:max-w-2xl">
+        <input
+            type="text"
+            name="search"
+            placeholder="Search transport logs or paste a trace code..."
+            x-model="value"
+            class="h-10 w-full rounded-xl border border-zinc-300 bg-white pl-10 pr-4 text-sm shadow-sm transition-all duration-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        />
+
+        <svg
+            class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+    </div>
+</form>
+
+    <div class="ml-auto flex items-center gap-2 md:ml-0">
+        <button
+            type="button"
+            @click="$store.theme.toggle()"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            aria-label="Toggle theme"
+        >
+            <svg x-show="!$store.theme.isDark" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            <svg x-show="$store.theme.isDark" x-cloak class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        </button>
+
+        <div class="relative" x-data="{ open: false }">
+            <button
+                type="button"
+                @click="open = !open"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white"
+                aria-label="User menu"
+            >
+                A
+            </button>
+
+            <div
+                 x-show="open"
+                 x-cloak
+                 @click.away="open = false"
+                 class="absolute right-0 z-40 mt-2 w-48 rounded-xl border border-zinc-200 bg-white py-1 shadow-premium-lg dark:border-zinc-800 dark:bg-zinc-900"
+             >
+                <div class="border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
+                    <p class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Admin</p>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400">admin@transport.app</p>
+                </div>
+                <a href="http://127.0.0.1:8000/settings" class="block px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800">Settings</a>
+                <form method="POST" action="http://127.0.0.1:8000/logout">
+                    <input type="hidden" name="_token" value="" autocomplete="off">                    <button type="submit" class="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-zinc-50 dark:text-red-400 dark:hover:bg-zinc-800">Sign out</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</header>
+
+            <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+                <div class="mx-auto max-w-7xl space-y-6">
+                    <div
+    aria-live="assertive"
+    class="pointer-events-none fixed inset-0 z-50 flex items-end px-4 py-6 sm:items-start sm:p-6"
+>
+    <div id="toast-container" class="flex w-full flex-col items-center space-y-4 sm:items-end"></div>
+</div>
+
+                        <nav class="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400" aria-label="Breadcrumb">
+                                    <a href="http://127.0.0.1:8000/dashboard" class="transition-colors hover:text-zinc-900 dark:hover:text-zinc-100">Dashboard</a>
+                <svg class="h-4 w-4 text-zinc-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                                <a href="http://127.0.0.1:8000/accounts" class="transition-colors hover:text-zinc-900 dark:hover:text-zinc-100">Accounts</a>
+                <svg class="h-4 w-4 text-zinc-300 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                                <span class="font-medium text-zinc-900 dark:text-zinc-100" aria-current="page">New Account</span>
+                        </nav>
+
+    <div class="border-b border-zinc-200 pb-5 dark:border-zinc-800">
+        <h1 class="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">New Account</h1>
+        <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Create a new ledger account.</p>
+    </div>
+
+    <form method="POST" action="http://127.0.0.1:8000/accounts" class="mt-6 space-y-6" x-data='{ selectedType: "fuel_station", isDriver: false, linkedDriverId: "" }'>
+        <input type="hidden" name="_token" value="" autocomplete="off">
+        
+        <div class="rounded-xl border border-zinc-200 bg-white p-6 shadow-premium-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h3 class="text-base font-medium text-zinc-900 dark:text-zinc-100">Account Details</h3>
+            <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Basic information for this account.</p>
+
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                    <label for="type" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Type <span class="text-red-500">*</span></label>
+                    <select name="type" id="type" x-model="selectedType" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                        <option value="fuel_station">Fuel Station</option>
+                        <option value="motor_parts_shop">Motor Parts Shop</option>
+                        <option value="staff">Staff</option>
+                        <option value="company_expense">Company Expense</option>
+                    </select>
+                                    </div>
+
+                <div class="sm:col-span-2">
+                    <label for="name" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" id="name" value="" required class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                    </div>
+
+                                <div x-show="selectedType === 'fuel_station'" x-cloak x-transition>
+                    <div x-data="creatableSelect({"name":"linked_fuel_station_id","options":[{"value":1,"label":"Shell - Braedenborough"},{"value":2,"label":"HP Petrol - Lake Clydechester"},{"value":3,"label":"Bharat Petroleum - West Deondreton"},{"value":4,"label":"Reliance Jio-BP - New Romaine"},{"value":5,"label":"Nayara - Deonview"},{"value":6,"label":"Reliance Jio-BP - Port Angie"},{"value":7,"label":"Reliance Jio-BP - Hodkiewiczland"},{"value":8,"label":"Reliance Jio-BP - East Lennaside"}],"selected":null,"searchable":true,"allowClear":true,"createUrl":"http:\/\/127.0.0.1:8000\/entities\/fuel-stations","fallbackUrl":"http:\/\/127.0.0.1:8000\/accounts\/create?type=fuel_station","syncName":"","entityType":"fuel_station","createModalId":"add-fuel-station-modal","createFormFields":[{"name":"name","label":"Name","type":"text","required":true,"maxlength":255},{"name":"branch_id","label":"Branch","type":"select","required":false,"options":[{"value":1,"label":"Moenhaven Branch (ZJY)"},{"value":2,"label":"West Zoe Branch (OXJ)"},{"value":3,"label":"East Kiley Branch (HRA)"}]},{"name":"contact_info","label":"Contact Info","type":"text","required":false,"maxlength":255},{"name":"address","label":"Address","type":"textarea","required":false},{"name":"is_active","label":"Active","type":"checkbox","checked":true}]})">
+    <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        Linked Fuel Station
+            </label>
+
+    <div class="relative mt-1.5" @click.outside="open = false">
+        <div class="relative">
+            <input
+                type="text"
+                x-model="query"
+                @click="open = true; filter()"
+                @input="filter()"
+                @focus="open = true; filter()"
+                @keydown.escape="open = false"
+                @keydown.arrow-down.prevent="move(1)"
+                @keydown.arrow-up.prevent="move(-1)"
+                @keydown.enter.prevent="selectHighlighted()"
+                :placeholder="Select fuel station..."
+                autocomplete="off"
+                class="block w-full rounded-lg border-zinc-300 bg-white text-zinc-900 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm py-2 pl-3 pr-10 cursor-pointer"
+                :class="{ 'border-red-300 ring-red-200 focus:border-red-500 focus:ring-red-500': errorMessage }"
+                x-ref="input"
+            />
+            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <svg class="h-5 w-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+            </div>
+        </div>
+
+        <input type="hidden" :name="name" :value="selectedValue">
+
+                <div
+            x-show="open"
+            x-cloak
+            x-transition.opacity
+            class="fixed z-40 max-h-60 overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-premium-lg dark:border-zinc-700 dark:bg-zinc-800"
+            :style="{ top: dropdownTop + 'px', left: dropdownLeft + 'px', width: dropdownWidth + 'px' }"
+        >
+            <template x-for="(option, idx) in filteredOptions" :key="option.value">
+                <button
+                    type="button"
+                    @click="select(option)"
+                    @mouseenter="highlighted = idx"
+                    :class="highlighted === idx
+                        ? 'bg-zinc-100 dark:bg-zinc-700'
+                        : 'bg-transparent'"
+                    class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors"
+                >
+                    <span class="min-w-0 truncate font-medium text-zinc-900 dark:text-zinc-50" x-text="option.label"></span>
+                </button>
+            </template>
+
+            <div x-show="filteredOptions.length === 0 && createUrl" class="px-3 py-3 text-sm text-zinc-600 dark:text-zinc-300 border-t border-zinc-200 dark:border-zinc-700">
+                <p>No matching option found.</p>
+                <a
+                    href="http://127.0.0.1:8000/accounts/create?type=fuel_station"
+                    :href="managementUrl"
+                    target="_blank"
+                    @click.prevent="open = false; $dispatch('open-modal', createModalId)"
+                    class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-300 dark:hover:text-brand-200"
+                >
+                    + Add <span class="font-mono" x-text="query || 'new'"></span> →
+                </a>
+            </div>
+
+            <div x-show="filteredOptions.length === 0 && !createUrl" class="px-3 py-3 text-sm text-zinc-600 dark:text-zinc-300">
+                <p>No matching option found.</p>
+            </div>
+        </div>
+        
+        <div class="mt-1.5 flex items-center justify-between text-xs">
+            <p class="text-zinc-500 dark:text-zinc-400">
+                <span x-show="!selectedValue">No option selected
+                                             — <a :href="managementUrl" target="_blank" @click.prevent="open = false; $dispatch('open-modal', createModalId)" class="text-brand-600 hover:text-brand-700 dark:text-brand-400">create one</a>
+                                    </span>
+                <span x-show="selectedValue">
+                    Selected: <span class="font-medium" x-text="selectedLabel"></span>
+                    <span x-show="selectedBalance !== null"> · Current balance:
+                        <span :class="selectedBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'" class="font-medium" x-text="formatBalance()"></span>
+                    </span>
+                </span>
+            </p>
+            <button
+                type="button"
+                x-show="selectedValue && allowClear"
+                @click="clear()"
+                class="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+                Clear
+            </button>
+        </div>
+
+            </div>
+
+    
+        <div
+    x-data="{ open: false }"
+    x-on:open-modal.window="if ($event.detail === 'add-fuel-station-modal') open = true"
+    x-on:close-modal.window="if ($event.detail === 'add-fuel-station-modal') open = false"
+    x-show="open"
+    x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+>
+    <div x-show="open" x-transition.opacity class="absolute inset-0 bg-zinc-950/50 backdrop-blur-sm" @click="open = false"></div>
+
+    <div
+        x-show="open"
+        x-transition
+        class="relative w-full max-w-lg rounded-2xl border border-zinc-200 bg-white shadow-premium-lg dark:border-zinc-800 dark:bg-zinc-900"
+    >
+                    <div class="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+                <h3 class="text-base font-semibold text-zinc-950 dark:text-zinc-50">Add new fuel station</h3>
+                <button type="button" @click="open = false" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200" aria-label="Close">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        
+        <div class="px-6 py-5">
+            <div x-data="inlineCreate({
+            url: 'http://127.0.0.1:8000/entities/fuel-stations',
+            modalId: 'add-fuel-station-modal',
+            entityType: 'fuel_station',
+        })">
+            <form id="add-fuel-station-modal-form" @submit.prevent="submit($event)">
+                <input type="hidden" name="_token" value="" autocomplete="off">                <div class="space-y-4">
+                                            <div>
+                            <label for="add-fuel-station-modal-name" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Name
+                                 <span class="text-red-500">*</span>                             </label>
+                                                            <input type="text" name="name" id="add-fuel-station-modal-name"
+                                     required                                      maxlength="255"                                                                                                             class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                                                                    <template x-if="fieldError('name')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('name')"></p></template>
+                        </div>
+                                            <div>
+                            <label for="add-fuel-station-modal-branch_id" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Branch
+                                                            </label>
+                                                            <select name="branch_id" id="add-fuel-station-modal-branch_id"
+                                    class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm"
+                                    >
+                                    <option value="">Select...</option>
+                                                                            <option value="1">Moenhaven Branch (ZJY)</option>
+                                                                            <option value="2">West Zoe Branch (OXJ)</option>
+                                                                            <option value="3">East Kiley Branch (HRA)</option>
+                                                                    </select>
+                                                                                    <template x-if="fieldError('branch_id')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('branch_id')"></p></template>
+                        </div>
+                                            <div>
+                            <label for="add-fuel-station-modal-contact_info" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Contact Info
+                                                            </label>
+                                                            <input type="text" name="contact_info" id="add-fuel-station-modal-contact_info"
+                                                                         maxlength="255"                                                                                                             class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                                                                    <template x-if="fieldError('contact_info')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('contact_info')"></p></template>
+                        </div>
+                                            <div>
+                            <label for="add-fuel-station-modal-address" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Address
+                                                            </label>
+                                                            <textarea name="address" id="add-fuel-station-modal-address" rows="2"
+                                    class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm"></textarea>
+                                                                                    <template x-if="fieldError('address')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('address')"></p></template>
+                        </div>
+                                            <div>
+                            <label for="add-fuel-station-modal-is_active" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Active
+                                                            </label>
+                                                            <div class="mt-1.5 flex items-center gap-2">
+                                    <input type="checkbox" name="is_active" id="add-fuel-station-modal-is_active" value="1"  checked                                         class="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900">
+                                    <label for="add-fuel-station-modal-is_active" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Active</label>
+                                </div>
+                                                                                    <template x-if="fieldError('is_active')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('is_active')"></p></template>
+                        </div>
+                    
+                    <template x-if="fieldError('_form')">
+                        <p class="text-xs text-red-600 dark:text-red-400" x-text="fieldError('_form')"></p>
+                    </template>
+                </div>
+            </form>
+        </div>
+        </div>
+
+                    <div class="flex justify-end gap-2 border-t border-zinc-200 px-6 py-4 dark:border-zinc-800">
+                <div class="flex justify-end gap-2">
+                <button type="button" @click="$dispatch('close-modal', 'add-fuel-station-modal')" class="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800/50">
+                    Cancel
+                </button>
+                <button type="submit" form="add-fuel-station-modal-form" :disabled="submitting" class="inline-flex h-9 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white shadow-premium-sm hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200">
+                    <svg x-show="submitting" x-cloak class="h-4 w-4 animate-spin mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    Save
+                </button>
+            </div>
+            </div>
+            </div>
+</div>
+    
+</div>                </div>
+
+                <div x-show="selectedType === 'staff'" x-cloak x-transition>
+                    <label for="aadhar_no" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Aadhar No. <span class="text-red-500">*</span></label>
+                    <input type="text" name="aadhar_no" id="aadhar_no" value="" maxlength="12" placeholder="XXXX XXXX XXXX" x-on:input="$el.value = $el.value.replace(/\\D/g, '').replace(/(\\d{4})(?=\\d)/g, '$1 ')" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">12-digit Aadhar number (e.g. 1234 5678 9012)</p>
+                                    </div>
+
+                <div x-show="selectedType === 'staff'" x-cloak x-transition>
+                    <label for="linked_driver_id" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Linked Driver</label>
+                    <select name="linked_driver_id" id="linked_driver_id" x-model="linkedDriverId" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                        <option value="">Select driver</option>
+                                                    <option value="1" >Devonte Halvorson (IU9299452086)</option>
+                                                    <option value="2" >Nova Lesch V (KG9965926992)</option>
+                                                    <option value="3" >Floyd Auer (BM8012775181)</option>
+                                                    <option value="4" >Valerie Reilly PhD (MX6684530255)</option>
+                                                    <option value="5" >Guido Gaylord III (XP0948368038)</option>
+                                                    <option value="6" >Olaf Herman (NS8192441503)</option>
+                                                    <option value="7" >Mrs. Dolly Kozey V (FX8729486208)</option>
+                                                    <option value="8" >Leilani Morissette (FN3566211904)</option>
+                                                    <option value="9" >Madge Schmeler (PS2804027726)</option>
+                                                    <option value="10" >Pink Goodwin (DS6013235133)</option>
+                                                    <option value="11" >Mikayla Haag (IC4881221884)</option>
+                                                    <option value="12" >Kasey Zulauf (HV0034632255)</option>
+                                                    <option value="13" >Prof. Lily Fay (NS1063181915)</option>
+                                                    <option value="14" >Dr. Aaliyah Bednar (YB6504977049)</option>
+                                                    <option value="15" >Mireille Kassulke (XC2596842338)</option>
+                                            </select>
+                </div>
+
+                <div x-show="selectedType === 'staff'" x-cloak x-transition class="sm:col-span-2">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" name="is_driver" id="is_driver" value="1" x-model="isDriver"  class="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900">
+                        <label for="is_driver" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">This staff member is a driver</label>
+                    </div>
+                </div>
+
+                <div x-show="selectedType === 'staff' && (isDriver || linkedDriverId)" x-cloak x-transition>
+                    <label for="driving_license_no" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Driving License No. <span class="text-red-500">*</span></label>
+                    <input type="text" name="driving_license_no" id="driving_license_no" value="" placeholder="e.g. DL1420110012345" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Alphanumeric, 8–20 characters</p>
+                                    </div>
+
+                <div x-data='{ bankAccountNo: null, bankIfscCode: null, bankName: null, get bankHint() { const filled = [this.bankAccountNo, this.bankIfscCode, this.bankName].filter(v => v && v.trim()).length; return filled > 0 && filled < 3; } }' x-show="$parent.selectedType === \"fuel_station\" || $parent.selectedType === \"staff\"" x-cloak x-transition class="sm:col-span-2">
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-800/40">
+                        <h4 class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Bank Details</h4>
+                        <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 mb-3">Optional. Provide bank details for fuel station payouts or staff salary transfers.</p>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label for="bank_account_no" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Account Number</label>
+                                <input type="text" name="bank_account_no" id="bank_account_no" x-model="bankAccountNo" placeholder="e.g. 123456789012" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                                            </div>
+
+                            <div>
+                                <label for="bank_ifsc_code" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">IFSC Code</label>
+                                <input type="text" name="bank_ifsc_code" id="bank_ifsc_code" x-model="bankIfscCode" maxlength="11" placeholder="e.g. SBIN0001234" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Format: 4 letters + 0 + 6 alphanumeric (e.g. SBIN0001234)</p>
+                                                            </div>
+
+                            <div class="sm:col-span-2">
+                                <label for="bank_name" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Bank Name</label>
+                                <input type="text" name="bank_name" id="bank_name" x-model="bankName" placeholder="e.g. State Bank of India" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                                            </div>
+                        </div>
+
+                        <p x-show="bankHint" x-cloak class="mt-3 text-xs text-blue-600 dark:text-blue-400">
+                            You've entered some bank details. For complete records, consider filling in all three fields (account number, IFSC, and bank name).
+                        </p>
+                    </div>
+                </div>
+
+                <div>
+                    <div x-data="creatableSelect({"name":"branch_id","options":[{"value":1,"label":"Moenhaven Branch (ZJY)"},{"value":2,"label":"West Zoe Branch (OXJ)"},{"value":3,"label":"East Kiley Branch (HRA)"}],"selected":null,"searchable":true,"allowClear":true,"createUrl":"http:\/\/127.0.0.1:8000\/entities\/branches","fallbackUrl":"http:\/\/127.0.0.1:8000\/accounts\/create","syncName":"","entityType":"branch","createModalId":"add-branch-modal","createFormFields":[{"name":"name","label":"Name","type":"text","required":true,"maxlength":255},{"name":"code","label":"Code","type":"text","required":true,"maxlength":20,"help":"Short alphanumeric code (e.g. DEL, MUM)"},{"name":"address","label":"Address","type":"textarea","required":false}]})">
+    <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        Branch
+         <span class="text-red-500">*</span>     </label>
+
+    <div class="relative mt-1.5" @click.outside="open = false">
+        <div class="relative">
+            <input
+                type="text"
+                x-model="query"
+                @click="open = true; filter()"
+                @input="filter()"
+                @focus="open = true; filter()"
+                @keydown.escape="open = false"
+                @keydown.arrow-down.prevent="move(1)"
+                @keydown.arrow-up.prevent="move(-1)"
+                @keydown.enter.prevent="selectHighlighted()"
+                :placeholder="Select branch..."
+                autocomplete="off"
+                class="block w-full rounded-lg border-zinc-300 bg-white text-zinc-900 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm py-2 pl-3 pr-10 cursor-pointer"
+                :class="{ 'border-red-300 ring-red-200 focus:border-red-500 focus:ring-red-500': errorMessage }"
+                x-ref="input"
+            />
+            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <svg class="h-5 w-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+            </div>
+        </div>
+
+        <input type="hidden" :name="name" :value="selectedValue">
+
+                <div
+            x-show="open"
+            x-cloak
+            x-transition.opacity
+            class="fixed z-40 max-h-60 overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-premium-lg dark:border-zinc-700 dark:bg-zinc-800"
+            :style="{ top: dropdownTop + 'px', left: dropdownLeft + 'px', width: dropdownWidth + 'px' }"
+        >
+            <template x-for="(option, idx) in filteredOptions" :key="option.value">
+                <button
+                    type="button"
+                    @click="select(option)"
+                    @mouseenter="highlighted = idx"
+                    :class="highlighted === idx
+                        ? 'bg-zinc-100 dark:bg-zinc-700'
+                        : 'bg-transparent'"
+                    class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors"
+                >
+                    <span class="min-w-0 truncate font-medium text-zinc-900 dark:text-zinc-50" x-text="option.label"></span>
+                </button>
+            </template>
+
+            <div x-show="filteredOptions.length === 0 && createUrl" class="px-3 py-3 text-sm text-zinc-600 dark:text-zinc-300 border-t border-zinc-200 dark:border-zinc-700">
+                <p>No matching option found.</p>
+                <a
+                    href="http://127.0.0.1:8000/accounts/create"
+                    :href="managementUrl"
+                    target="_blank"
+                    @click.prevent="open = false; $dispatch('open-modal', createModalId)"
+                    class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-300 dark:hover:text-brand-200"
+                >
+                    + Add <span class="font-mono" x-text="query || 'new'"></span> →
+                </a>
+            </div>
+
+            <div x-show="filteredOptions.length === 0 && !createUrl" class="px-3 py-3 text-sm text-zinc-600 dark:text-zinc-300">
+                <p>No matching option found.</p>
+            </div>
+        </div>
+        
+        <div class="mt-1.5 flex items-center justify-between text-xs">
+            <p class="text-zinc-500 dark:text-zinc-400">
+                <span x-show="!selectedValue">No option selected
+                                             — <a :href="managementUrl" target="_blank" @click.prevent="open = false; $dispatch('open-modal', createModalId)" class="text-brand-600 hover:text-brand-700 dark:text-brand-400">create one</a>
+                                    </span>
+                <span x-show="selectedValue">
+                    Selected: <span class="font-medium" x-text="selectedLabel"></span>
+                    <span x-show="selectedBalance !== null"> · Current balance:
+                        <span :class="selectedBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'" class="font-medium" x-text="formatBalance()"></span>
+                    </span>
+                </span>
+            </p>
+            <button
+                type="button"
+                x-show="selectedValue && allowClear"
+                @click="clear()"
+                class="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+                Clear
+            </button>
+        </div>
+
+            </div>
+
+    
+        <div
+    x-data="{ open: false }"
+    x-on:open-modal.window="if ($event.detail === 'add-branch-modal') open = true"
+    x-on:close-modal.window="if ($event.detail === 'add-branch-modal') open = false"
+    x-show="open"
+    x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+>
+    <div x-show="open" x-transition.opacity class="absolute inset-0 bg-zinc-950/50 backdrop-blur-sm" @click="open = false"></div>
+
+    <div
+        x-show="open"
+        x-transition
+        class="relative w-full max-w-lg rounded-2xl border border-zinc-200 bg-white shadow-premium-lg dark:border-zinc-800 dark:bg-zinc-900"
+    >
+                    <div class="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+                <h3 class="text-base font-semibold text-zinc-950 dark:text-zinc-50">Add new branch</h3>
+                <button type="button" @click="open = false" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200" aria-label="Close">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        
+        <div class="px-6 py-5">
+            <div x-data="inlineCreate({
+            url: 'http://127.0.0.1:8000/entities/branches',
+            modalId: 'add-branch-modal',
+            entityType: 'branch',
+        })">
+            <form id="add-branch-modal-form" @submit.prevent="submit($event)">
+                <input type="hidden" name="_token" value="" autocomplete="off">                <div class="space-y-4">
+                                            <div>
+                            <label for="add-branch-modal-name" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Name
+                                 <span class="text-red-500">*</span>                             </label>
+                                                            <input type="text" name="name" id="add-branch-modal-name"
+                                     required                                      maxlength="255"                                                                                                             class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                                                                    <template x-if="fieldError('name')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('name')"></p></template>
+                        </div>
+                                            <div>
+                            <label for="add-branch-modal-code" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Code
+                                 <span class="text-red-500">*</span>                             </label>
+                                                            <input type="text" name="code" id="add-branch-modal-code"
+                                     required                                      maxlength="20"                                                                                                             class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                                                                        <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Short alphanumeric code (e.g. DEL, MUM)</p>
+                                                        <template x-if="fieldError('code')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('code')"></p></template>
+                        </div>
+                                            <div>
+                            <label for="add-branch-modal-address" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                Address
+                                                            </label>
+                                                            <textarea name="address" id="add-branch-modal-address" rows="2"
+                                    class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm"></textarea>
+                                                                                    <template x-if="fieldError('address')"><p class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="fieldError('address')"></p></template>
+                        </div>
+                    
+                    <template x-if="fieldError('_form')">
+                        <p class="text-xs text-red-600 dark:text-red-400" x-text="fieldError('_form')"></p>
+                    </template>
+                </div>
+            </form>
+        </div>
+        </div>
+
+                    <div class="flex justify-end gap-2 border-t border-zinc-200 px-6 py-4 dark:border-zinc-800">
+                <div class="flex justify-end gap-2">
+                <button type="button" @click="$dispatch('close-modal', 'add-branch-modal')" class="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800/50">
+                    Cancel
+                </button>
+                <button type="submit" form="add-branch-modal-form" :disabled="submitting" class="inline-flex h-9 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white shadow-premium-sm hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200">
+                    <svg x-show="submitting" x-cloak class="h-4 w-4 animate-spin mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    Save
+                </button>
+            </div>
+            </div>
+            </div>
+</div>
+    
+</div>                                    </div>
+
+                <div>
+                    <label for="contact_info" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Contact Info</label>
+                    <input type="text" name="contact_info" id="contact_info" value="" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                </div>
+
+                <div class="sm:col-span-2">
+                    <label for="address" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Address</label>
+                    <textarea name="address" id="address" rows="2" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm"></textarea>
+                </div>
+
+                <div>
+                    <label for="opening_balance" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Opening Balance</label>
+                    <input type="number" step="0.01" name="opening_balance" id="opening_balance" value="0" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" name="is_active" id="is_active" value="1" checked class="h-4 w-4 rounded border-zinc-300 text-brand-600 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900">
+                    <label for="is_active" class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Active</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2">
+            <a href="http://127.0.0.1:8000/accounts" class="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800/50">
+                Cancel
+            </a>
+            <button type="submit" class="inline-flex h-9 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white shadow-premium-sm hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200">
+                Create Account
+            </button>
+        </div>
+    </form>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    </body>
+</html>

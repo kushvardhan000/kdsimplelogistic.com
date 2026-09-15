@@ -125,7 +125,7 @@ class AccountLedgerService
         return $query->paginate(15)->withQueryString();
     }
 
-    protected function recalculateRunningBalances(Account $account): void
+    public function recalculateRunningBalances(Account $account): void
     {
         $transactions = AccountTransaction::where('account_id', $account->id)
             ->orderBy('transaction_date')

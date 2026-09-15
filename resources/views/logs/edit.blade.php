@@ -11,6 +11,6 @@
     </div>
 
     <div class="rounded-xl border border-zinc-200 bg-white p-6 shadow-premium-sm dark:border-zinc-800 dark:bg-zinc-900">
-        @include('logs._form', ['log' => $transportLog, 'formAction' => route('transport-logs.update', $transportLog), 'formMethod' => 'PUT'])
+        @include('logs._form', ['log' => $transportLog, 'formAction' => route('transport-logs.update', $transportLog), 'formMethod' => 'PUT', 'fuelStations' => $fuelStations, 'branches' => $branches])
     </div>
 @endsection

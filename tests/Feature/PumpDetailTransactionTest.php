@@ -21,6 +21,7 @@ class PumpDetailTransactionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(\Database\Seeders\CustomFieldOptionSeeder::class);
         $this->admin = User::factory()->superAdmin()->create();
         $this->actingAs($this->admin);
     }

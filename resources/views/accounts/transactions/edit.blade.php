@@ -10,7 +10,12 @@
         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Update transaction for {{ $account->name }}.</p>
     </div>
 
-    <form method="POST" action="{{ route('accounts.transactions.update', [$account, $transaction]) }}" class="mt-6 space-y-6" x-data='{ direction: @json(old("direction", $transaction->direction ?? "debit")), paymentPlan: @json(old("payment_plan", $transaction->payment_plan ?? "full")) }' enctype="multipart/form-data">
+    @php
+    $paymentModes = \App\Models\CustomFieldOption::forField('payment_mode')->active()->ordered()->get();
+    $paymentPlans = \App\Models\CustomFieldOption::forField('payment_plan')->active()->ordered()->get();
+@endphp
+
+<form method="POST" action="{{ route('accounts.transactions.update', [$account, $transaction]) }}" class="mt-6 space-y-6" x-data='{ direction: @json(old("direction", $transaction->direction ?? "debit")), paymentPlan: @json(old("payment_plan", $transaction->payment_plan ?? "full")) }' enctype="multipart/form-data">
         @csrf
         @method('PUT')
 
@@ -51,26 +56,25 @@
                     @enderror
                 </div>
 
-                <div>
-                    <label for="payment_mode" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Payment Mode</label>
-                    <select name="payment_mode" id="payment_mode" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
-                        <option value="">Select mode</option>
-                        <option value="cash" {{ old('payment_mode', $transaction->payment_mode) === 'cash' ? 'selected' : '' }}>Cash</option>
-                        <option value="bank_transfer" {{ old('payment_mode', $transaction->payment_mode) === 'bank_transfer' ? 'selected' : '' }}>Bank Transfer</option>
-                        <option value="upi" {{ old('payment_mode', $transaction->payment_mode) === 'upi' ? 'selected' : '' }}>UPI</option>
-                        <option value="cheque" {{ old('payment_mode', $transaction->payment_mode) === 'cheque' ? 'selected' : '' }}>Cheque</option>
-                        <option value="other" {{ old('payment_mode', $transaction->payment_mode) === 'other' ? 'selected' : '' }}>Other</option>
-                    </select>
-                </div>
+<div>
+    <label for="payment_mode" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Payment Mode</label>
+    <select name="payment_mode" id="payment_mode" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+        <option value="">Select mode</option>
+        @foreach($paymentModes as $mode)
+            <option value="{{ $mode->value }}" {{ old('payment_mode', $transaction->payment_mode) === $mode->value ? 'selected' : '' }}>{{ $mode->label }}</option>
+        @endforeach
+    </select>
+</div>
 
-                <div>
-                    <label for="payment_plan" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Payment Plan</label>
-                    <select name="payment_plan" id="payment_plan" x-model="paymentPlan" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
-                        <option value="full">Full</option>
-                        <option value="emi" {{ old('payment_plan', $transaction->payment_plan) === 'emi' ? 'selected' : '' }}>EMI</option>
-                        <option value="partial" {{ old('payment_plan', $transaction->payment_plan) === 'partial' ? 'selected' : '' }}>Partial</option>
-                    </select>
-                </div>
+<div>
+    <label for="payment_plan" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Payment Plan</label>
+    <select name="payment_plan" id="payment_plan" x-model="paymentPlan" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+        <option value="">Select plan</option>
+        @foreach($paymentPlans as $plan)
+            <option value="{{ $plan->value }}" {{ old('payment_plan', $transaction->payment_plan) === $plan->value ? 'selected' : '' }}>{{ $plan->label }}</option>
+        @endforeach
+    </select>
+</div>
 
                 <div x-show="paymentPlan === 'emi'" x-cloak x-transition class="sm:col-span-2 grid gap-4 sm:grid-cols-2">
                     <div>

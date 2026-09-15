@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Account;
 
+use App\Models\CustomFieldOption;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreAccountTransactionRequest extends FormRequest
 {
@@ -13,12 +15,22 @@ class StoreAccountTransactionRequest extends FormRequest
 
     public function rules(): array
     {
+        $paymentModeValues = CustomFieldOption::forField('payment_mode')
+            ->active()
+            ->pluck('value')
+            ->toArray();
+
+        $paymentPlanValues = CustomFieldOption::forField('payment_plan')
+            ->active()
+            ->pluck('value')
+            ->toArray();
+
         return [
             'branch_id' => ['required', 'integer', 'exists:branches,id'],
             'direction' => ['required', 'string', 'in:debit,credit'],
             'amount' => ['required', 'numeric', 'min:0.01', 'max:9999999999.99'],
-            'payment_mode' => ['nullable', 'string', 'in:cash,bank_transfer,upi,cheque,other'],
-            'payment_plan' => ['nullable', 'string', 'in:full,emi,partial'],
+            'payment_mode' => ['nullable', 'string', Rule::in($paymentModeValues)],
+            'payment_plan' => ['nullable', 'string', Rule::in($paymentPlanValues)],
             'installment_no' => ['nullable', 'integer', 'min:1'],
             'installment_total' => ['nullable', 'integer', 'min:1'],
             'reference_type' => ['nullable', 'string', 'max:255'],

@@ -5,7 +5,9 @@ use App\Http\Controllers\AccountTransactionController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\CustomFieldController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\InlineEntityController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\TransportLogController;
 use App\Http\Controllers\UserController;
@@ -36,6 +38,8 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->middleware(['auth', 'no.cache'])
     ->name('logout');
 
+require __DIR__ . '/logsheets.php';
+
 /*
  * Authenticated application
  */
@@ -44,6 +48,9 @@ Route::middleware(['auth', 'active', 'no.cache'])->group(function () {
 
     Route::get('/trace/{trace_code}', [App\Http\Controllers\TraceController::class, 'show'])
         ->name('trace.show');
+
+    Route::post('/entities/branches', [InlineEntityController::class, 'storeBranch'])->name('entities.branches.store');
+    Route::post('/entities/fuel-stations', [InlineEntityController::class, 'storeFuelStation'])->name('entities.fuel-stations.store');
 
     /*
      * Transport logs (Admin & Super Admin)
@@ -86,6 +93,12 @@ Route::middleware(['auth', 'active', 'no.cache'])->group(function () {
         Route::post('/accounts/{account}/transactions', [AccountTransactionController::class, 'store'])->name('accounts.transactions.store');
         Route::put('/accounts/{account}/transactions/{transaction}', [AccountTransactionController::class, 'update'])->name('accounts.transactions.update');
         Route::delete('/accounts/{account}/transactions/{transaction}', [AccountTransactionController::class, 'destroy'])->name('accounts.transactions.destroy');
+
+        Route::get('/settings/custom-fields', [CustomFieldController::class, 'index'])->name('settings.custom-fields.index');
+        Route::post('/settings/custom-fields', [CustomFieldController::class, 'store'])->name('settings.custom-fields.store');
+        Route::patch('/settings/custom-fields/reorder', [CustomFieldController::class, 'reorder'])->name('settings.custom-fields.reorder');
+        Route::put('/settings/custom-fields/{option}', [CustomFieldController::class, 'update'])->name('settings.custom-fields.update');
+        Route::delete('/settings/custom-fields/{option}', [CustomFieldController::class, 'destroy'])->name('settings.custom-fields.destroy');
     });
 });
 

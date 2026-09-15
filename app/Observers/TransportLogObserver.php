@@ -6,12 +6,30 @@ use App\Models\Account;
 use App\Models\AccountTransaction;
 use App\Models\StationDebit;
 use App\Models\TransportLog;
+use App\Services\AccountLedgerService;
 use App\Services\ActivityLogger;
+use App\Services\FuelSettlementService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class TransportLogObserver
 {
+    private static array $pendingReassignments = [];
+
+    public function updating(TransportLog $log): void
+    {
+        if (! $log->exists || ! $log->isDirty('fuel_station_id')) {
+            return;
+        }
+
+        self::$pendingReassignments[$log->id] = $log->getOriginal('fuel_station_id');
+
+        $oldStationId = $log->getOriginal('fuel_station_id');
+        $newStationId = $log->fuel_station_id;
+
+        $this->handleStationReassignment($log, $oldStationId, $newStationId);
+    }
+
     public function saving(TransportLog $log): void
     {
         $attributes = $log->getAttributes();
@@ -65,10 +83,6 @@ class TransportLogObserver
                 $this->logDebitActivity($log, $existing, $changes, 'reversed');
             }
         }
-
-        if ($log->exists) {
-            $this->mirrorToAccountTransactions($log);
-        }
     }
 
     public function created(TransportLog $log): void
@@ -83,11 +97,25 @@ class TransportLogObserver
 
     public function updated(TransportLog $log): void
     {
-        $this->mirrorToAccountTransactions($log);
+        $oldStationId = self::$pendingReassignments[$log->id] ?? null;
+        unset(self::$pendingReassignments[$log->id]);
+
+        if ($oldStationId === null || $oldStationId === $log->fuel_station_id) {
+            $this->mirrorToAccountTransactions($log);
+        }
+
         $this->recalculateSettlement($log);
     }
 
     public function deleted(TransportLog $log): void
+    {
+        // On soft delete, do NOT delete the mirrored debit transaction.
+        // The debit and credit transactions are historical ledger entries that must be preserved.
+        // Only the fuel settlement cached fields on the log are affected (handled by restored event).
+        // StationDebit is also preserved for backward compatibility.
+    }
+
+    public function forceDeleted(TransportLog $log): void
     {
         if ($log->diesel_advance > 0 && $log->fuel_station_id) {
             $existing = StationDebit::where('reference_type', 'transport_log')
@@ -147,80 +175,156 @@ class TransportLogObserver
         $userId = Auth::id() ?? ($log->updated_by ?? $log->created_by ?? null);
         $existing = AccountTransaction::where('reference_type', TransportLog::class)
             ->where('reference_id', $log->id)
+            ->where('account_id', $account->id)
             ->whereNull('deleted_at')
             ->first();
 
+        $ledgerService = app(AccountLedgerService::class);
+
         if ($verb === 'delete' || $log->diesel_advance <= 0) {
             if ($existing) {
-                DB::transaction(function () use ($existing, $account, $userId) {
-                    $lockedAccount = Account::whereKey($account->id)->lockForUpdate()->firstOrFail();
-                    $existing->update(['deleted_at' => now(), 'updated_by' => $userId]);
-                    $this->recalculateRunningBalances($lockedAccount);
-                });
+                $ledgerService->reverseTransaction($existing);
             }
             return;
         }
 
-        DB::transaction(function () use ($log, $account, $existing, $userId) {
-            $lockedAccount = Account::whereKey($account->id)->lockForUpdate()->firstOrFail();
-            $amount = (float) $log->diesel_advance;
+        $amount = (float) $log->diesel_advance;
 
-            if ($existing) {
-                $oldAmount = (float) $existing->amount;
-                if ($oldAmount !== $amount) {
-                    $existing->update([
-                        'amount' => $amount,
-                        'description' => 'Diesel advance for ' . $log->date,
-                        'updated_by' => $userId,
-                    ]);
-                    $this->recalculateRunningBalances($lockedAccount);
-                }
-            } else {
-                AccountTransaction::create([
-                    'account_id' => $lockedAccount->id,
-                    'branch_id' => $log->branch_id,
-                    'direction' => 'debit',
+        if ($existing) {
+            $oldAmount = (float) $existing->amount;
+            if ($oldAmount !== $amount) {
+                $lockedAccount = Account::whereKey($account->id)->lockForUpdate()->firstOrFail();
+                $existing->update([
                     'amount' => $amount,
-                    'payment_mode' => null,
-                    'payment_plan' => null,
-                    'reference_type' => TransportLog::class,
-                    'reference_id' => $log->id,
                     'description' => 'Diesel advance for ' . $log->date,
-                    'transaction_date' => $log->date,
-                    'running_balance' => 0,
-                    'created_by' => $userId,
                     'updated_by' => $userId,
                 ]);
-                $this->recalculateRunningBalances($lockedAccount);
+                $ledgerService->recalculateRunningBalances($lockedAccount);
             }
-        });
+        } else {
+            $ledgerService->createTransaction($account, [
+                'branch_id' => $log->branch_id,
+                'direction' => 'debit',
+                'amount' => $amount,
+                'payment_mode' => null,
+                'payment_plan' => null,
+                'reference_type' => TransportLog::class,
+                'reference_id' => $log->id,
+                'description' => 'Diesel advance for ' . $log->date,
+                'transaction_date' => $log->date,
+                'created_by' => $userId,
+                'updated_by' => $userId,
+            ]);
+        }
     }
 
-    protected function recalculateRunningBalances(Account $account): void
+    protected function handleStationReassignment(TransportLog $log, ?int $oldStationId = null, ?int $newStationId = null): void
     {
-        $transactions = AccountTransaction::where('account_id', $account->id)
-            ->orderBy('transaction_date')
-            ->orderBy('id')
-            ->get();
+        $oldStationId = $oldStationId ?? ($log->_oldFuelStationId ?? $log->getOriginal('fuel_station_id'));
+        $newStationId = $newStationId ?? $log->fuel_station_id;
+        $amount = (float) ($log->diesel_advance ?? 0);
+        $userId = Auth::id() ?? ($log->updated_by ?? $log->created_by ?? null);
 
-        $balance = (float) $account->opening_balance;
-        foreach ($transactions as $txn) {
-            if ($txn->direction === 'debit') {
-                $balance = round($balance + (float) $txn->amount, 2);
-            } else {
-                $balance = round(max(0, $balance - (float) $txn->amount), 2);
+        DB::transaction(function () use ($log, $oldStationId, $newStationId, $amount, $userId) {
+            $ledgerService = app(AccountLedgerService::class);
+
+            $oldAccount = $oldStationId
+                ? Account::where('type', 'fuel_station')
+                    ->where('linked_fuel_station_id', $oldStationId)
+                    ->first()
+                : null;
+
+            if ($oldAccount) {
+                $oldDebit = AccountTransaction::where('reference_type', TransportLog::class)
+                    ->where('reference_id', $log->id)
+                    ->where('direction', 'debit')
+                    ->where('account_id', $oldAccount->id)
+                    ->whereNull('deleted_at')
+                    ->first();
+
+                if ($oldDebit) {
+                    $lockedOldAccount = Account::whereKey($oldAccount->id)->lockForUpdate()->firstOrFail();
+                    $ledgerService->reverseTransaction($oldDebit);
+                    $ledgerService->recalculateRunningBalances($lockedOldAccount);
+                }
+
+                $payments = AccountTransaction::where('reference_type', TransportLog::class)
+                    ->where('reference_id', $log->id)
+                    ->where('direction', 'credit')
+                    ->where('account_id', $oldAccount->id)
+                    ->whereNull('deleted_at')
+                    ->get();
+
+                if ($payments->isNotEmpty()) {
+                    $paymentCount = $payments->count();
+                    $totalPaid = round((float) $payments->sum('amount'), 2);
+
+                    foreach ($payments as $payment) {
+                        $lockedPaymentAccount = Account::whereKey($payment->account_id)->lockForUpdate()->firstOrFail();
+                        $ledgerService->reverseTransaction($payment);
+                        $ledgerService->recalculateRunningBalances($lockedPaymentAccount);
+                    }
+
+                    $oldStationName = $oldAccount->name ?? ('Fuel Station #' . $oldStationId);
+                    ActivityLogger::log(
+                        action: 'reassign_station',
+                        module: 'transport_logs',
+                        recordId: $log->id,
+                        description: "Reassigning transport log #{$log->id} from fuel station #{$oldStationId} ({$oldStationName}) to fuel station #" . ($newStationId ?? 'cleared') . ". Reversed {$paymentCount} existing payment(s) totaling ₹" . number_format($totalPaid, 2) . " previously recorded against the old station. Those credits must be re-recorded on the new station if applicable.",
+                        recordSummary: $log->vehicle_no,
+                        changes: [
+                            'fuel_station_id' => ['old' => $oldStationId, 'new' => $newStationId],
+                            'reversed_payments' => $paymentCount,
+                            'reversed_amount' => $totalPaid,
+                        ],
+                        user: Auth::user()
+                    );
+                }
             }
-            $txn->update(['running_balance' => $balance]);
-        }
 
-        $lastTxn = AccountTransaction::where('account_id', $account->id)
-            ->orderByDesc('transaction_date')
-            ->orderByDesc('id')
-            ->first();
+            $log->forceFill([
+                'fuel_paid_amount' => 0,
+                'fuel_payment_status' => null,
+            ]);
 
-        $account->update([
-            'current_balance' => $lastTxn ? $lastTxn->running_balance : $account->opening_balance,
-        ]);
+            if ($newStationId) {
+                $newAccount = Account::where('type', 'fuel_station')
+                    ->where('linked_fuel_station_id', $newStationId)
+                    ->first();
+
+                if (! $newAccount) {
+                    $newAccount = Account::create([
+                        'type' => 'fuel_station',
+                        'name' => $log->fuelStation->name ?? ('Fuel Station #' . $newStationId),
+                        'linked_fuel_station_id' => $newStationId,
+                        'branch_id' => $log->branch_id,
+                        'opening_balance' => 0,
+                        'current_balance' => 0,
+                        'is_active' => true,
+                        'created_by' => $userId,
+                        'updated_by' => $userId,
+                    ]);
+                }
+
+                if ($amount > 0) {
+                    $ledgerService->createTransaction($newAccount, [
+                        'branch_id' => $log->branch_id,
+                        'direction' => 'debit',
+                        'amount' => $amount,
+                        'payment_mode' => null,
+                        'payment_plan' => null,
+                        'reference_type' => TransportLog::class,
+                        'reference_id' => $log->id,
+                        'description' => 'Diesel advance for ' . $log->date,
+                        'transaction_date' => $log->date,
+                        'created_by' => $userId,
+                        'updated_by' => $userId,
+                    ]);
+                }
+            }
+
+            app(FuelSettlementService::class)->recalculateForLog($log);
+        });
     }
 
     protected function recalculateSettlement(TransportLog $log): void

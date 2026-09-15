@@ -11,6 +11,7 @@ trait TransportLogRules
         $decimal = ['nullable', 'numeric', 'min:0', 'max:9999999999.99'];
 
         return [
+            'confirm_reassignment' => ['sometimes', 'accepted'],
             'date' => ['required', 'date'],
             'vehicle_no' => ['required', 'string', 'max:255'],
             'company' => ['required', 'string', 'max:255'],

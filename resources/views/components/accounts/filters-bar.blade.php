@@ -1,6 +1,7 @@
 @props([
     'action' => request()->url(),
     'preserve' => [],
+    'paymentModes' => [],
 ])
 
 @php
@@ -118,11 +119,9 @@
 
         <select name="payment_mode" x-model="paymentMode" class="h-7 rounded-md border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 text-xs">
             <option value="">All Modes</option>
-            <option value="cash" {{ request('payment_mode') === 'cash' ? 'selected' : '' }}>Cash</option>
-            <option value="bank_transfer" {{ request('payment_mode') === 'bank_transfer' ? 'selected' : '' }}>Bank Transfer</option>
-            <option value="upi" {{ request('payment_mode') === 'upi' ? 'selected' : '' }}>UPI</option>
-            <option value="cheque" {{ request('payment_mode') === 'cheque' ? 'selected' : '' }}>Cheque</option>
-            <option value="other" {{ request('payment_mode') === 'other' ? 'selected' : '' }}>Other</option>
+            @foreach($paymentModes as $mode)
+                <option value="{{ $mode->value }}" {{ request('payment_mode') === $mode->value ? 'selected' : '' }}>{{ $mode->label }}</option>
+            @endforeach
         </select>
 
         <div class="flex items-center gap-1">

@@ -77,6 +77,7 @@ D:\transport\
 │   │   │   ├── UserController.php         # CRUD + resetPassword + activate/deactivate
 │   │   │   ├── SettingController.php      # Profile edit/update (Super Admin email/password)
 │   │   │   ├── ActivityLogController.php  # Index + show (Super Admin only)
+│   │   ├── InlineEntityController.php # AJAX create for branches & fuel stations (auth+active)
 │   │   │   └── Auth/
 │   │   │       ├── AuthenticatedSessionController.php # Login + logout
 │   │   │       └── PasswordResetController.php        # Forgot + reset password
@@ -93,7 +94,7 @@ D:\transport\
 │   │       ├── Profile/
 │   │       │   └── UpdateProfileRequest.php       # Super Admin can change email/password
 │   │       ├── Account/
-│   │       │   ├── StoreAccountRequest.php        # Account validation + null coercion for linked fields
+│   │   │   ├── StoreAccountRequest.php        # Account validation + null coercion for linked + bank fields
 │   │       │   └── StoreAccountTransactionRequest.php # Transaction validation (branch_id, direction, amount, etc.)
 │   │       └── Transport/
 │   │           ├── StoreTransportLogRequest.php   # Create validation + auth
@@ -148,14 +149,14 @@ D:\transport\
 │
 ├── database/
 │   ├── factories/                   # 12 factories
-│   ├── migrations/                  # 22 migrations
+│   ├── migrations/                  # 23 migrations
 │   └── seeders/                     # DatabaseSeeder + 6 individual seeders
 │
 ├── resources/
 │   ├── css/app.css                  # Tailwind v4 + custom theme
 │   ├── js/
 │   │   ├── bootstrap.js             # Axios setup
-│   │   └── app.js                   # Alpine: theme, layout, transportForm, toast
+│   │   └── app.js                   # Alpine: theme, layout, transportForm, fuelStationPicker, inlineCreate, toast
 │   └── views/
 │       ├── layouts/
 │       │   ├── app.blade.php        # Main layout
@@ -171,6 +172,7 @@ D:\transport\
 │       │   │   ├── filters-bar.blade.php
 │       │   │   ├── ledger-table.blade.php
 │       │   │   └── transaction-form-modal.blade.php
+│       │   │   ├── _inline-entity-modals.blade.php  # Inline modals to create branches/fuel stations without leaving the page
 │       │   └── ui/
 │       │       ├── badge.blade.php
 │       │       ├── button.blade.php
@@ -413,11 +415,12 @@ D:\transport\
 - Relationships: hasMany TransportLog (created_by), hasMany ActivityLog, belongsTo Branch
 
 ### Account
-- Fillable: type, name, linked_fuel_station_id, linked_driver_id, branch_id, contact_info, address, opening_balance, current_balance, is_active, metadata, aadhar_no, driving_license_no, created_by, updated_by
+- Fillable: type, name, linked_fuel_station_id, linked_driver_id, branch_id, contact_info, address, opening_balance, current_balance, is_active, metadata, aadhar_no, driving_license_no, bank_account_no, bank_ifsc_code, bank_name, created_by, updated_by
 - Casts: opening_balance (decimal:2), current_balance (decimal:2), is_active (boolean), metadata (array)
 - Relationships: belongsTo FuelStation, belongsTo Driver, belongsTo Branch, hasMany AccountTransaction
 - Types: fuel_station, motor_parts_shop, staff, company_expense
 - Staff-specific: `aadhar_no` (string, globally unique, 12 digits), `driving_license_no` (string, nullable unless is_driver or linked_driver_id is set)
+- Bank details (fuel_station & staff): `bank_account_no` (string, nullable), `bank_ifsc_code` (string, nullable, format validated `^[A-Z]{4}0[A-Z0-9]{6}$` i.e. 4 letters + `0` + 6 alphanumeric; normalized to uppercase on validation), `bank_name` (string, nullable). All three optional; a client-side Alpine hint nudges completing all three when some are filled. Displayed masked on the show/pump-flow pages (e.g. account number "XXXX XXXX 4521", IFSC uppercased). See `StoreAccountRequest.php`, `resources/views/accounts/create.blade.php`, `resources/views/accounts/edit.blade.php`, `resources/views/accounts/show.blade.php`, and `resources/views/accounts/_pump-flow.blade.php`.
 
 ### AccountTransaction
 - Fillable: account_id, branch_id, direction, amount, payment_mode, payment_plan, installment_no, installment_total, reference_type, reference_id, description, attachment_path, transaction_date, running_balance, created_by, updated_by
@@ -592,6 +595,17 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - Fuel station accounts use a simplified step-based flow (`accounts?type=fuel_station&selected={id}`) as the single canonical view; direct hits to `accounts/{id}` for fuel_station type redirect to that flow
 - Edit and Delete actions are available inline on account detail views for all 4 types (fuel station pump header + account cards for other types)
 - Staff accounts have mandatory identity fields: `aadhar_no` (required, exactly 12 digits, globally unique) and conditional `driving_license_no` (required when the staff member is marked as a driver via `is_driver` checkbox or when `linked_driver_id` is set). Aadhar is displayed masked on the show page (e.g. "XXXX XXXX 9012"). See `resources/views/accounts/create.blade.php`, `resources/views/accounts/edit.blade.php`, and `app/Http/Requests/Account/StoreAccountRequest.php`.
+- Bank detail fields (`bank_account_no`, `bank_ifsc_code`, `bank_name`) added for `fuel_station` and `staff` account types. All three are optional; `bank_ifsc_code` is validated against `^[A-Z]{4}0[A-Z0-9]{6}$` (case-insensitive, normalized to uppercase on validation). A client-side Alpine hint nudges users to complete all three when some are filled (not hard validation). Account number is masked on display (e.g. "XXXX XXXX 4521") on the staff show page and the fuel-station pump-flow detail view. Migration: `2026_09_11_000000_add_bank_detail_fields_to_accounts_table`.
+
+#### Custom Field Options (Super Admin only)
+- A `custom_field_options` table (`2026_09_11_000001_create_custom_field_options_table.php`) stores extensible dropdown options for descriptive fields such as `payment_mode` and `payment_plan`.
+- Structural enums (`Account.type`, `AccountTransaction.direction`) remain hardcoded in their respective request validators and are NOT managed through this table to preserve ledger integrity.
+- The `CustomFieldController` exposes full CRUD (`/settings/custom-fields`) restricted to `super_admin` via the `super_admin` middleware.
+- `CustomFieldOptionSeeder` migrates the legacy hardcoded values (cash, bank_transfer, upi, cheque, other for payment_mode; full, emi, partial for payment_plan) into the table for backward compatibility.
+- `StoreAccountTransactionRequest` validates `payment_mode` and `payment_plan` against the active `custom_field_options` entries instead of hardcoded lists.
+- All transaction forms (`transaction-form-modal.blade.php`, `accounts/transactions/edit.blade.php`) and the filters bar populate their `<select>` elements from the `custom_field_options` table.
+- Deactivating an option removes it from new transactions without corrupting historical records.
+- Tests: `tests/Feature/CustomFieldOptionsTest.php` (11 tests covering CRUD, authorization, validation, and historical integrity).
 
 ### Fuel Station Picker (Transport Log Forms)
 - The `fuel_station_name` field on `resources/views/logs/_form.blade.php` has been replaced with a proper searchable dropdown (combobox/typeahead).
@@ -600,7 +614,7 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - Features:
   - Searchable by name OR branch, with ↑/↓/Enter/Esc keyboard navigation
   - Below the field, shows the selected station's **current live ledger balance** (e.g. "Current balance: ₹12,345.67"), color-coded green/red
-  - If no station matches, shows a "+ Add 'X' as a new station →" link that opens `accounts.create?type=fuel_station&name=...` in a new tab (reuses the existing accounts create form for type=fuel_station)
+  - If no station matches, shows a "+ Add 'X' as a new station →" link. With JS enabled it opens an in-page modal (`add-fuel-station-modal`) to create the fuel station inline; the new station is appended to the picker list and auto-selected. If JS is disabled, the link falls back to opening `accounts.create?type=fuel_station&name=...` in a new tab.
   - Click-outside to close, Clear button to reset
   - Selected station's name is also auto-filled into the legacy `fuel_station_name` hidden input for display/backward compatibility
   - Hidden `fuel_station_id` input is the canonical source of truth
@@ -608,6 +622,19 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - Legacy logs that still have a `fuel_station_name` string but no `fuel_station_id` display gracefully on the show page (no crash); the picker is empty by default and the user can re-link by selecting a station.
 - On the show page, when `fuel_station_id` is set, the fuel station name is rendered as a **link to its ledger** (`accounts?type=fuel_station&selected={id}`).
 - Tests: `tests/Feature/FuelStationComboboxTest.php` and `tests/Feature/FuelStationDisplayRegressionTest.php`.
+
+### Inline Entity Creation (Branches & Fuel Stations)
+- Lightweight modal flow (reusing the `<x-ui.modal>` component) lets users create a `branches` or `fuel_stations` row without leaving the current page.
+- Triggered from the accounts create/edit forms via a `+` button next to each `linked_fuel_station_id` and `branch_id` dropdown, and from the transport-log fuel-station picker combobox.
+- Backed by `app/Http/Controllers/InlineEntityController.php` and routes (Super Admin + Admin, `auth` + `active`):
+  - `POST /entities/branches` (`entities.branches.store`) — creates a branch (name, code, address). `code` is upper-cased and uniqueness-validated.
+  - `POST /entities/fuel-stations` (`entities.fuel-stations.store`) — creates a fuel station (name, branch_id, contact_info, address, is_active). `slug` is auto-generated (unique suffix added if needed).
+- Both endpoints are AJAX (expect `X-Requested-With` + `Accept: application/json`); validation failures return a 422 JSON error payload that the modal renders inline.
+- The `inlineCreate` Alpine component (in `resources/js/app.js`) submits the modal form via `fetch`, adds the new option to the target `<select>`, auto-selects it, closes the modal, and dispatches a window `entity-created` event.
+- The transport-log picker (`fuelStationPicker`) listens for `entity-created` so a station created from its modal is appended to the live station list and auto-selected (with a balance default of 0).
+- Graceful fallback: the picker's "Add new station" link keeps its `accounts.create?type=fuel_station` `target="_blank"` href and only swaps to the in-page modal when JS is available (`@click.prevent="$dispatch('open-modal', 'add-fuel-station-modal')"`), so the new-tab form still works if JS fails.
+- Shared modal markup lives in `resources/views/accounts/_inline-entity-modals.blade.php` (both `add-branch-modal` and `add-fuel-station-modal`). The fuel-station modal itself contains a "+ Add New Branch" trigger.
+- Tests: `tests/Feature/InlineEntityCreationTest.php`.
 
 ### Traceability
 - Each transport log gets a unique `trace_code` (format `TL-000001`) on creation
@@ -643,8 +670,15 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 | 6 | Two different logs accidentally linked to the same `(reference_type, reference_id)` | **Impossible by design.** The pair `(reference_type='App\\Models\\TransportLog', reference_id=<id>)` is treated as a strict unique logical key — each credit transaction can only ever be linked to one transport log. There is no share-collision possible. See `test_reference_pair_is_strict_per_log`. |
 | 7 | Out-of-order deletes (e.g. delete the earliest payment when later ones still exist, producing a state that would imply negative balance) | Recalculation is always driven by `SUM(amount)` of currently-non-deleted credits. The status is correctly computed each time: `overpaid` if paid > advance, `paid` if equal, `partial` if paid > 0, `unpaid` if paid = 0. The fuel station account's `current_balance` is clamped at 0 (you can't owe a pump money). |
 | 8 | Concurrent payment attempts on the same log from two browser tabs | The `AccountLedgerService::createTransaction()` method acquires a `lockForUpdate()` on the Account row inside `DB::transaction()`. Combined with the `recalculateSettlement()` call from `AccountTransactionObserver::created`, this serializes concurrent writes so the cached `fuel_paid_amount` and `current_balance` always reflect the actual committed state. Verified by `test_concurrent_payments_are_safely_serialized`. |
+| 9 | Admin changes a log’s `fuel_station_id` from an old station to a new station with no existing payments, while the diesel advance remains the same | The transport-log observer reverses the old station’s mirrored diesel-advance debit by soft-deleting the old `AccountTransaction` on the old station’s linked fuel account, then creates the new mirrored debit on the new station’s linked fuel account for the same submitted `diesel_advance` value inside the same database transaction. The new station’s `current_balance` and cached fuel settlement are recalculated immediately. |
+| 10 | Admin changes both `fuel_station_id` and `diesel_advance` in one edit, while old payments already exist on the log | The reassignor uses the currently submitted `diesel_advance` amount when creating the mirrored debit on the new station, and it reverses any existing payment credits on the old station’s account before resetting the log settlement fields to zero. The old station debit is removed from the old account and the new debit is created on the new account in the same transaction, preventing double-application or stale-amount drift. |
+| 11 | Admin clears `fuel_station_id` entirely (sets it to `null`) | The old station’s mirrored diesel-advance debit is soft-deleted through the same `reverseTransaction()` ledger path, no new account debit is created for an empty fuel station, and the cached `fuel_paid_amount` is forced back to `0` while `fuel_payment_status` is reset to `NULL` because the log no longer carries a fuel component. |
+| 12 | Admin reassigns a log with prior real payment credits recorded against the old station account | The safest policy is to treat those payments as having been recorded against the wrong station because the log’s station was wrong. They are reversed from the old station’s linked account via the same soft-delete ledger path, the reassignment is logged audibly with `ActivityLogger`, and the cached `fuel_paid_amount` / `fuel_payment_status` reset to zero so the user must re-record payments on the new fuel station if the settlement should continue. |
 
 ### Integration Fixes Applied
+- **LogsheetController@clearLogsheet**: Fixed leading-zero matching in clearing input — invoice displays log sheet numbers with leading zeros (e.g. `0045350959`) but the DB stores them without (e.g. `45350959`). Added `ltrim($request->input('log_sheet_no'), '0')` normalization before validation and lookup, with empty-string fallback for all-zero inputs. Also added `$request->merge()` to ensure the `exists` validator checks against the normalized value.
+- **resources/views/logsheets/show.blade.php**: Fixed `data_get()` lookup keys in raw consignment rows table — used original Excel column names (`Invoice No`, `Payer`, `Payer Name`, `Town`, `Volume`) but raw_data is stored with canonical keys (`invoice_no`, `payer`, `payer_name`, `town`, `volume`), causing all 6 data columns to display as blank. Changed to canonical keys.
+- **LogsheetImportService@parseDate**: Fixed Excel serial date handling — PhpSpreadsheet's `Excel::toArray()` returns date cells as Excel serial integers (e.g. `46182` for 2026-06-09), not `DateTime` objects. The old `parseDate()` used `Carbon::createFromFormat('Y-m-d', $value)` on numeric values, which threw `Carbon\Exceptions\InvalidFormatException` ("The separation symbol could not be found"). Since the entire import runs inside `DB::transaction()`, this exception caused a full rollback and a 500 error on upload — the feature appeared completely broken. Fix: numeric values are now converted via `Carbon::createFromFormat('Y-m-d', '1899-12-30')->addDays($value)`. Also added handling for Excel "null date" strings (`00.00.0000`) which previously parsed as garbage dates.
 - **TransportLogController**: Fixed status filter (`profit`/`loss`/`breakeven`) by casting `$request->string('status')` to native string before comparison (Stringable object !== string)
 - **TransportLogObserver**: Split event handlers so `creating`/`updating` recompute totals, while `created`/`updated` sync StationDebit and mirror AccountTransaction with correct model ID; added `saved` handler to invalidate dashboard cache; added `creating` handler to auto-generate `trace_code`; `mirrorToAccountTransactions` now uses `lockForUpdate` on Account row and delegates to `recalculateRunningBalances()` for correct backdated-transaction handling
 - **TransportLog model**: Added `created_at` and `updated_at` to `$fillable` to allow test backdating and observer preservation through `forceFill`; added `trace_code` to `$fillable`
@@ -668,6 +702,58 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - **AccountController show redirect for fuel_station**: `AccountController@show` now redirects `fuel_station` type accounts to the step-based pump flow (`accounts?type=fuel_station&selected={id}`) instead of rendering the generic full ledger page, making the step-based view the single source of truth for fuel station ledgers
 - **Inline edit/delete on account detail views**: Added Edit (pencil icon) and Delete (trash icon) buttons to the fuel station pump detail header and to every non-fuel-station account card in `accounts/type-index.blade.php`, linking to the existing `accounts.edit` and `accounts.destroy` routes with standard confirm dialogs
 - **AccountFactory default type**: Changed default `type` from random element to `motor_parts_shop` to prevent flaky test failures caused by random `fuel_station` accounts hitting the new redirect
+
+---
+
+## 8. Logsheet Import & Clearing
+
+### Schema
+The project now includes a dedicated logsheet-ingestion pipeline that mirrors the existing Excel-first import workflow without mutating the canonical `transport_logs` table. The formal storage model is split into four physical objects:
+
+- `logsheet_imports` stores the upload metadata: `date_from`, `date_to`, `original_filename`, `uploaded_by`, `row_count`, `consolidated_count`, `duplicate_count`, `invalid_count`, and `status` (`pending`, `completed`, `invalid`). Each import is owned by the uploading `User`.
+- `logsheet_raw_rows` persists every source row from the Excel file as a raw JSON payload, keyed by `import_id`, `row_number_in_file`, and `log_sheet_no`. It also carries `is_valid` and `validation_error` columns so a row can be saved as a failure record instead of being silently dropped.
+- `logsheets` is the consolidated ledger of grouped logsheet summaries. It stores the canonical `log_sheet_no` and the rolled-up totals (`total_gross_wt`, `total_booked_amount`, `total_actual_amount`, `total_diff`) plus the date and other document metadata such as `vehicle_no`, `tprt_code`, `tprt_name`, `destination`, `sap_invoice_no`, `posting_date`, `bill_date`, and `vendor_inv_no`.
+- `logsheet_clearings` captures the audit trail for a clearing action (`invoice_no_reference`, `notes`, `cleared_by`, `cleared_at`) and is linked back to a specific `Logsheet` row.
+
+The concrete Eloquent objects are in the namespace `App\Models`: `LogsheetImport`, `LogsheetRawRow`, `Logsheet`, and `LogsheetClearing`. They are wired with `belongsTo()` and `hasMany()` relationships so the controller can present both import metadata and raw-row evidence on the detail page.
+
+### Service
+The import engine is `App\Services\LogsheetImportService`. Its `import(UploadedFile $file)` method performs the following lifecycle:
+
+1. Starts a `DB::transaction()` and creates a `LogsheetImport` row with `status = pending` and the originating filename.
+2. Reads the spreadsheet with `Maatwebsite\Excel\Facades\Excel::toArray()`, validates the required column headers (`Log Sheet No`, `Date`, `Tprt Code`, `Tprt Name`, `Container ID`, `Destination`, `SAPInvoiceNo`, `Posting Date`, `Bill Date`, `VendorInvNo`, `Actual Rate`, `Invoice No`, `Inv-Date`, `Payer`, `Payer Name`, `Town`, `Volume`, `Gross Wt`, `Booked Amount`, `Actual Amount`, `Diff`), and short-circuits with an `invalid` import status if the workbook lacks any of them.
+3. Iterates row-by-row, normalizes the payload into the `raw_data` field, validates `log_sheet_no` presence, and persists invalid rows as `LogsheetRawRow` records with `is_valid = false` and a `validation_error` message.
+4. Groups valid rows by `log_sheet_no` and computes the per-sheet totals by summing `Gross Wt`, `Booked Amount`, `Actual Amount`, and `Diff` values, then uses `Logsheet::updateOrCreate()` to write the consolidated row atomically.
+5. Stores raw row audits on `logsheet_raw_rows` and updates the import metadata (`consolidated_count`, `invalid_count`, `duplicate_count`) before finishing. The `parseDate()` helper normalizes Excel date cells and numeric date-token values into a `Y-m-d` string.
+
+The service is intentionally conservative: it records all import evidence in normalized raw rows and never drops a file without leaving a trace in the import metadata and raw-row model.
+
+### Routes
+The logsheet route group is intentionally scoped behind the existing Super Admin authority gate and no-cache middleware:
+
+```php
+Route::middleware(['auth', 'active', 'no.cache', 'role:super_admin'])->group(function () {
+    Route::get('/logsheets', [LogsheetController::class, 'index'])->name('logsheets.index');
+    Route::post('/logsheets', [LogsheetController::class, 'store'])->name('logsheets.store');
+    Route::get('/logsheets/{logsheet}', [LogsheetController::class, 'show'])->name('logsheets.show');
+    Route::post('/logsheets/clear', [LogsheetController::class, 'clearLogsheet'])->name('logsheets.clear');
+});
+```
+
+The route surface supports the primary UX: upload an Excel workbook (`POST /logsheets`), list the consolidated logsheet summaries (`GET /logsheets`), inspect one grouped logsheet with its raw consignment rows (`GET /logsheets/{logsheet}`), and record a clearing event (`POST /logsheets/clear`).
+
+### UI
+The UI is deliberately simple and visible to the admin team:
+
+- `resources/views/logsheets/index.blade.php` renders a searchable/filterable summary page with:
+  - an upload form that accepts `.xlsx`, `.xls`, and `.csv` files,
+  - date-from / date-to filters,
+  - a compact clearing input box (`log_sheet_no`) that posts to `logsheets.clear`,
+  - a table of consolidated logsheets with totals and status (`Pending` / `Cleared`) columns.
+- `resources/views/logsheets/show.blade.php` renders the per-logsheet detail page; it presents the header values (`Date`, `Vehicle`, `Tprt Code`, `Tprt Name`, `Destination`, `SAP Invoice No`, `Posting`, `Bill`, `Vendor Inv No`) and a raw-row table showing the individual consignment payloads (`row_number_in_file`, `Invoice No`, `Inv-Date`, `Payer`, `Payer Name`, `Town`, `Volume`).
+- `resources/views/components/layout/sidebar.blade.php` exposes a `Logsheets` navigation entry so the workflow remains reachable from the main app shell.
+
+The controller behind the screens is `App\Http\Controllers\LogsheetController`, which coordinates `index()`, `store()`, `show()`, and `clearLogsheet()` against `LogsheetImportService` and the relevant Eloquent models.
 
 ---
 
@@ -720,6 +806,10 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 - `PumpDetailTransactionTest.php`: 5 tests — adding transaction from pump detail with linked transport log updates settlement, adding without linked log doesn't touch transport logs, transport log search returns destination and driver, pump detail page shows add transaction button and modal, completing payment from pump detail marks log as paid.
 - `StaffAccountIdentityTest.php`: 7 tests — staff account creation requires aadhar_no, rejects invalid aadhar formats (letters/wrong length), requires driving_license_no when is_driver is checked, accepts valid staff+driver submissions, show page displays masked aadhar and license, non-staff accounts don't require aadhar, and aadhar_no is globally unique.
 - `UsersIndexTest.php`: 1 test — confirms `/users` returns exactly the seeded super_admin + admin count and contains none of the seeded driver names.
+- `LogsheetImportServiceTest.php`: 1 test — verifies service groups rows by log_sheet_no, sums gross_wt/booked_amount/actual_amount/diff correctly, and preserves raw row count as consignment_count.
+- `LogsheetClearingTest.php`: 4 tests — clearing a real logsheet updates status/sets cleared_at/cleared_by and creates a logsheet_clearings audit row; idempotent clearing (second clear shows "already cleared" and creates no duplicate record); nonexistent log_sheet_no returns clean validation error; missing log_sheet_no returns validation error.
+- `LogsheetClearingLeadingZeroTest.php`: 2 tests — clearing with exact log_sheet_no works; clearing with leading zeros (invoice format `0045350959`) correctly matches DB-stored value (`45350959`).
+- `LogsheetImportAggregationTest.php`: 2 tests — aggregation sums totals correctly across 3 log sheets (total_gross_wt, total_booked_amount, total_actual_amount, total_diff all match raw row sums; total_gross_wt for 45350959 = 5999.802 per spec); duplicate import preserves all consignment data; show blade view displays raw row data correctly using canonical keys (Invoice No, Payer, Payer Name, Town, Volume all visible per consignment row).
 
 ## 11. Developer Orientation Guide — Where to Find Everything
 
@@ -744,6 +834,9 @@ This section is a practical, task-oriented map for anyone new to the codebase. I
 | Change how activity logging works | `app/Services/ActivityLogger.php` + `app/Http/Middleware/LogActivity.php` |
 | Change the fuel station picker on transport log forms | `resources/views/logs/_form.blade.php` + `fuelStationPicker` Alpine component in `resources/js/app.js` + `app/Http/Controllers/TransportLogController.php` (`formViewData()`) |
 | Change staff account identity fields (Aadhar / driving license) | `app/Http/Requests/Account/StoreAccountRequest.php` + `resources/views/accounts/create.blade.php` + `resources/views/accounts/edit.blade.php` + `resources/views/accounts/show.blade.php` |
+| Add inline "Add New" branch / fuel station modals | `app/Http/Controllers/InlineEntityController.php` + `resources/views/accounts/_inline-entity-modals.blade.php` + routes in `routes/web.php` + `inlineCreate` Alpine data in `resources/js/app.js` + `fuelStationPicker.onEntityCreated` listener |
+| Add bank detail fields to accounts | `2026_09_11_000000_add_bank_detail_fields_to_accounts_table` migration + `app/Http/Requests/Account/StoreAccountRequest.php` + `app/Models/Account.php` + `resources/views/accounts/{create,edit,show}.blade.php` + `_pump-flow.blade.php` |
+| Add/edit dropdown options like payment mode | `/settings/custom-fields` page + `custom_field_options` table + `CustomFieldController` + `CustomFieldOptionSeeder` + `StoreAccountTransactionRequest` validation + `transaction-form-modal.blade.php` + `accounts/transactions/edit.blade.php` + `filters-bar.blade.php` |
 
 ### 2. Request lifecycle walkthrough: "What happens when a Super Admin records a fuel payment"
 
@@ -812,8 +905,15 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 
 7. **Fuel station empty state**: When a pump has zero transactions, the pump-flow fragment now shows a friendly empty-state card with a "Record Transaction" button instead of a blank table, so it is clear the pump is active but simply has no activity yet.
 8. **Copy button UX**: Both the transport log show page and the trace lookup page now use an inline Alpine-powered copy interaction. Clicking the copy button shows a green checkmark + "Copied!" text for 1.5 seconds, replacing the previous `alert()` popup.
-9. **trace_code search**: The transport logs index search now matches against `trace_code` in addition to `vehicle_no`, `company`, and `transport_name`. The global header search detects exact trace_code matches and redirects straight to `/trace/{trace_code}`, while partial matches fall through to the normal transport logs search results.
+9. **Fuel-station reassignment warning/confirmation UX**: When a transport log’s `fuel_station_id` is changed, the edit form warning banner and required checkbox already surface a human-readable warning that the reassignment will reverse any prior payment credits recorded against the old station and require re-recording them on the new station if desired. This is a deliberate, money-moving safety confirmation and is therefore treated as a known simplification of the UI flow rather than an automatic silent reassignment.
+10. **trace_code search**: The transport logs index search now matches against `trace_code` in addition to `vehicle_no`, `company`, and `transport_name`. The global header search detects exact trace_code matches and redirects straight to `/trace/{trace_code}`, while partial matches fall through to the normal transport logs search results.
 10. **Trace page enrichment**: The `/trace/{trace_code}` page now displays creator/editor names, vehicle, company, carrier, branch, and direct links to the transport log's show and edit pages, making it the definitive "everything related to this log" view.
 11. **Staff identity fields**: Staff accounts (`type = staff`) now require `aadhar_no` (12 digits, globally unique) and conditionally require `driving_license_no` when the staff member is marked as a driver (`is_driver` checkbox or `linked_driver_id` is set). The Aadhar is displayed masked on the show page (e.g. "XXXX XXXX 9012"). These fields are stored as raw columns on the `accounts` table (not in `metadata`), with a unique index on `aadhar_no`.
-12. **Fuel station picker on transport log forms**: The free-text `fuel_station_name` input has been replaced with an Alpine-powered searchable combobox (`fuelStationPicker` in `resources/js/app.js`) that lists active fuel stations with live balance previews. It also offers an "Add new station" inline flow that opens `accounts.create?type=fuel_station` in a new tab.
+12. **Fuel station picker on transport log forms**: The free-text `fuel_station_name` input has been replaced with an Alpine-powered searchable combobox (`fuelStationPicker` in `resources/js/app.js`) that lists active fuel stations with live balance previews. Its "Add new station" link now opens an in-page modal (`add-fuel-station-modal`, backed by `InlineEntityController`) for inline creation with new-tab fallback; the picker also listens for a global `entity-created` event so newly created stations appear and auto-select. Added parallel "+ Add New Branch/Fuel Station" modals on account create/edit forms and an `InlineEntityController` exposing `POST /entities/{branches,fuel-stations}`.
 13. **Pump detail transaction flow**: Adding a transaction from a pump's detail view (`accounts?type=fuel_station&selected={id}`) uses the exact same `transaction-form-modal` component and `AccountLedgerService::createTransaction()` code path as all other entry points. The modal pre-fills `account_id` to the selected pump, optionally links to a transport log via the existing `/accounts/transport-logs/search` type-ahead (now returning `destination` and `driver_name`), and correctly triggers the observer chain to update linked transport log settlement status.
+14. **Bank detail fields on accounts**: Added optional `bank_account_no`, `bank_ifsc_code`, and `bank_name` columns to the `accounts` table (migration `2026_09_11_000000_add_bank_detail_fields_to_accounts_table`) for `fuel_station` and `staff` account types. `bank_ifsc_code` is validated against `^[A-Z]{4}0[A-Z0-9]{6}$` (case-insensitive, normalized to uppercase) and all three are optional. A client-side Alpine hint nudges users to complete all three when only some are filled (not hard validation). Account numbers are masked on display (e.g. "XXXX XXXX 4521") on the staff show page and the fuel-station pump-flow detail view. Tests in `tests/Feature/AccountBankDetailsTest.php`.
+15. **Custom field options for descriptive dropdowns**: A `custom_field_options` table (`2026_09_11_000001_create_custom_field_options_table.php`) stores extensible options for `payment_mode` and `payment_plan`. The `CustomFieldController` at `/settings/custom-fields` (restricted to `super_admin`) provides full CRUD for these options. `StoreAccountTransactionRequest` validates against the active options in the table instead of hardcoded lists. All transaction forms and the filters bar populate their `<select>` elements from the table. Deactivating an option removes it from new transactions without corrupting historical records. `CustomFieldOptionSeeder` migrates legacy hardcoded values for backward compatibility. Tests in `tests/Feature/CustomFieldOptionsTest.php`.
+
+16. **creatable-select is load-bearing across the app**: The `<x-ui.creatable-select>` component is used on `/accounts/create`, `/accounts/edit`, `/transport-logs/create`, `/transport-logs/{id}/edit`, `/settings/custom-fields`, and potentially other pages. A single syntax error or prop-passing bug in this component was capable of silently breaking the majority of authenticated routes. Any future change to this component must be followed by a full manual smoke-test pass across every page listed above, not just automated tests. See Integration Fixes Applied item 16 for the historical root-cause of a prop HTML-encoding bug that broke dropdown options across the app.
+
+16. **creatable-select component fix**: The `<x-ui.creatable-select>` component's Blade props `options` and `createFormFields` used `{{ }}` (HTML-encoding) instead of `:` (unescaped binding) in `accounts/edit.blade.php` and `logs/_form.blade.php`. This caused JSON strings passed via HTML attributes to have `"` encoded as `&quot;`, which broke `json_decode()` inside the component, resulting in empty `options` and `createFormFields` arrays. This silently prevented the "Add New" modal from rendering in the dropdown, leaving Fuel Station and Branch pickers without their inline creation flows. Fixed by changing `options="{{ ... }}"` → `:options="..."` and `create-form-fields="{{ ... }}"` → `:create-form-fields="..."`. This was the root cause of `/accounts/13/edit`, `/accounts?type=fuel_station&selected={id}`, `/transport-logs/create`, and `/transport-logs/{id}/edit` showing broken or hidden dropdowns — the component rendered but without its modal config, the dropdown options never populated. Also resolved cascading failures across all pages using this component.

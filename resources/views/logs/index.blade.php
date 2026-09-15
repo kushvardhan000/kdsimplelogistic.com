@@ -24,11 +24,38 @@
                 </a>
             @endcan
             @can('viewAny', App\Models\TransportLog::class)
-                <div x-data="{ exportOpen: false }" class="relative">
-                    <button type="button" @click="exportOpen = !exportOpen" class="inline-flex h-8 items-center justify-center rounded-lg border border-zinc-200 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800/50">
+                <div x-data="{
+                    exportOpen: false,
+                    dropdownTop: 0,
+                    dropdownRight: 0,
+                    init() {
+                        this._boundReposition = () => { if (this.exportOpen) this.positionDropdown(); };
+                    },
+                    positionDropdown() {
+                        const btn = this.$el.querySelector('button');
+                        if (!btn) return;
+                        const r = btn.getBoundingClientRect();
+                        this.dropdownTop = r.bottom;
+                        this.dropdownRight = window.innerWidth - r.right;
+                    },
+                    toggle() {
+                        this.exportOpen = !this.exportOpen;
+                        if (this.exportOpen) {
+                            this.$nextTick(() => this.positionDropdown());
+                            window.addEventListener('scroll', this._boundReposition, true);
+                            window.addEventListener('resize', this._boundReposition);
+                        } else {
+                            window.removeEventListener('scroll', this._boundReposition, true);
+                            window.removeEventListener('resize', this._boundReposition);
+                        }
+                    }
+                }" class="relative">
+                    <button type="button" @click="toggle()" class="inline-flex h-8 items-center justify-center rounded-lg border border-zinc-200 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800/50">
                         Export ▾
                     </button>
-                    <div x-show="exportOpen" @click.away="exportOpen = false" class="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+                    <div x-show="exportOpen" @click.away="exportOpen = false" x-cloak x-transition
+                         class="fixed z-40 mt-2 w-56 origin-top-right rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+                         :style="{ top: dropdownTop + 'px', right: dropdownRight + 'px' }">
                         <div class="py-1">
                             <a href="{{ route('transport-logs.export.monthly', array_merge(request()->query(), ['month' => now()->month, 'year' => now()->year])) }}" class="block px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">This Month</a>
                             <a href="{{ route('transport-logs.export.yearly', array_merge(request()->query(), ['year' => now()->year])) }}" class="block px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">This Year</a>

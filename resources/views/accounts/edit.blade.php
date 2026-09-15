@@ -48,14 +48,37 @@
                     @enderror
                 </div>
 
+                @php
+        $fuelStationsJson = $fuelStations->map(fn($s) => ['value' => $s->id, 'label' => $s->name])->values()->toJson();
+        $branchesJson = $branches->map(fn($b) => ['value' => $b->id, 'label' => $b->name . ' (' . $b->code . ')'])->values()->toJson();
+        $createFuelStationFields = [
+            ['name' => 'name', 'label' => 'Name', 'type' => 'text', 'required' => true, 'maxlength' => 255],
+            ['name' => 'branch_id', 'label' => 'Branch', 'type' => 'select', 'required' => false, 'options' => $branches->map(fn($b) => ['value' => $b->id, 'label' => $b->name . ' (' . $b->code . ')'])->toArray()],
+            ['name' => 'contact_info', 'label' => 'Contact Info', 'type' => 'text', 'required' => false, 'maxlength' => 255],
+            ['name' => 'address', 'label' => 'Address', 'type' => 'textarea', 'required' => false],
+            ['name' => 'is_active', 'label' => 'Active', 'type' => 'checkbox', 'checked' => true],
+        ];
+        $createBranchFields = [
+            ['name' => 'name', 'label' => 'Name', 'type' => 'text', 'required' => true, 'maxlength' => 255],
+            ['name' => 'code', 'label' => 'Code', 'type' => 'text', 'required' => true, 'maxlength' => 20, 'help' => 'Short alphanumeric code (e.g. DEL, MUM)'],
+            ['name' => 'address', 'label' => 'Address', 'type' => 'textarea', 'required' => false],
+        ];
+        $createFuelStationFieldsJson = json_encode($createFuelStationFields);
+        $createBranchFieldsJson = json_encode($createBranchFields);
+    @endphp
                 <div x-show="selectedType === 'fuel_station'" x-cloak x-transition>
-                    <label for="linked_fuel_station_id" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Linked Fuel Station</label>
-                    <select name="linked_fuel_station_id" id="linked_fuel_station_id" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
-                        <option value="">Select fuel station</option>
-                        @foreach($fuelStations as $station)
-                            <option value="{{ $station->id }}" {{ old('linked_fuel_station_id', $account->linked_fuel_station_id) == $station->id ? 'selected' : '' }}>{{ $station->name }}</option>
-                        @endforeach
-                    </select>
+                    <x-ui.creatable-select
+                        name="linked_fuel_station_id"
+                        label="Linked Fuel Station"
+                        :options="$fuelStationsJson"
+                        :selected="old('linked_fuel_station_id', $account->linked_fuel_station_id)"
+                        create-url="{{ route('entities.fuel-stations.store') }}"
+                        fallback-url="{{ route('accounts.create', ['type' => 'fuel_station']) }}"
+                        create-modal-id="add-fuel-station-modal"
+                        create-modal-title="Add New Fuel Station"
+                        :create-form-fields="$createFuelStationFieldsJson"
+                        placeholder="Select fuel station..."
+                    />
                 </div>
 
                 <div x-show="selectedType === 'staff'" x-cloak x-transition>
@@ -93,16 +116,59 @@
                     @enderror
                 </div>
 
+                <div x-data='{ bankAccountNo: @json(old("bank_account_no", $account->bank_account_no ?? "")), bankIfscCode: @json(old("bank_ifsc_code", $account->bank_ifsc_code ?? "")), bankName: @json(old("bank_name", $account->bank_name ?? "")), get bankHint() { const filled = [this.bankAccountNo, this.bankIfscCode, this.bankName].filter(v => v && v.trim()).length; return filled > 0 && filled < 3; } }' x-show="$parent.selectedType === \"fuel_station\" || $parent.selectedType === \"staff\"" x-cloak x-transition class="sm:col-span-2">
+                    <div class="rounded-lg border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-800/40">
+                        <h4 class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Bank Details</h4>
+                        <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 mb-3">Optional. Provide bank details for fuel station payouts or staff salary transfers.</p>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label for="bank_account_no" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Account Number</label>
+                                <input type="text" name="bank_account_no" id="bank_account_no" x-model="bankAccountNo" placeholder="e.g. 123456789012" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                @error('bank_account_no')
+                                    <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            <div>
+                                <label for="bank_ifsc_code" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">IFSC Code</label>
+                                <input type="text" name="bank_ifsc_code" id="bank_ifsc_code" x-model="bankIfscCode" maxlength="11" placeholder="e.g. SBIN0001234" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Format: 4 letters + 0 + 6 alphanumeric (e.g. SBIN0001234)</p>
+                                @error('bank_ifsc_code')
+                                    <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            <div class="sm:col-span-2">
+                                <label for="bank_name" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Bank Name</label>
+                                <input type="text" name="bank_name" id="bank_name" x-model="bankName" placeholder="e.g. State Bank of India" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                                @error('bank_name')
+                                    <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <p x-show="bankHint" x-cloak class="mt-3 text-xs text-blue-600 dark:text-blue-400">
+                            You've entered some bank details. For complete records, consider filling in all three fields (account number, IFSC, and bank name).
+                        </p>
+                    </div>
+                </div>
+
                 <div>
-                    <label for="branch_id" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Branch <span class="text-red-500">*</span></label>
-                    <select name="branch_id" id="branch_id" required class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
-                        <option value="">Select branch</option>
-                        @foreach($branches as $branch)
-                            <option value="{{ $branch->id }}" {{ old('branch_id', $account->branch_id) == $branch->id ? 'selected' : '' }}>{{ $branch->name }} ({{ $branch->code }})</option>
-                        @endforeach
-                    </select>
+                    <x-ui.creatable-select
+                        name="branch_id"
+                        label="Branch"
+                        :options="$branchesJson"
+                        selected="{{ old('branch_id', $account->branch_id) }}"
+                        create-url="{{ route('entities.branches.store') }}"
+                        fallback-url="{{ route('accounts.create') }}"
+                        create-modal-id="add-branch-modal"
+                        create-modal-title="Add New Branch"
+                        :create-form-fields="$createBranchFieldsJson"
+                        placeholder="Select branch..."
+                        required
+                    />
                     @error('branch_id')
-                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                     @enderror
                 </div>
 

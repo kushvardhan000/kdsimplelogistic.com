@@ -18,6 +18,12 @@ class AccountLedgerTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(\Database\Seeders\CustomFieldOptionSeeder::class);
+    }
+
     private function actingAsSuperAdmin(): User
     {
         $user = User::factory()->superAdmin()->create();

@@ -18,124 +18,113 @@
         'profit' => '= Total Sale - Total Expense',
         'balance_vehicle_payment' => '= Total Sale - Payment',
     ];
+
+    $hasPayments = false;
+    $totalPaid = 0;
+    $paymentCount = 0;
+    $oldStationName = null;
+    if ($log && $log->fuel_station_id) {
+        $payments = \App\Models\AccountTransaction::where('reference_type', \App\Models\TransportLog::class)
+            ->where('reference_id', $log->id)
+            ->where('direction', 'credit')
+            ->whereNull('deleted_at')
+            ->get();
+        $paymentCount = $payments->count();
+        $totalPaid = $payments->sum('amount');
+        $hasPayments = $paymentCount > 0;
+        $oldStation = \App\Models\Account::where('type', 'fuel_station')
+            ->where('linked_fuel_station_id', $log->fuel_station_id)
+            ->first();
+        $oldStationName = $oldStation?->name ?? ('Fuel Station #' . $log->fuel_station_id);
+    }
+
+    $fuelStationsJson = $fuelStations->map(fn($s) => ['value' => $s['id'], 'label' => $s['name'], 'branch' => $s['branch'], 'balance' => $s['current_balance']])->values()->toJson();
+    $selectedFuelStationId = $log && $log->fuel_station_id ? (int) $log->fuel_station_id : null;
+    $createFormFields = [
+        ['name' => 'name', 'label' => 'Name', 'type' => 'text', 'required' => true, 'maxlength' => 255],
+        ['name' => 'branch_id', 'label' => 'Branch', 'type' => 'select', 'required' => false, 'options' => $branches->map(fn($b) => ['value' => $b->id, 'label' => $b->name . ' (' . $b->code . ')'])->toArray()],
+        ['name' => 'contact_info', 'label' => 'Contact Info', 'type' => 'text', 'required' => false, 'maxlength' => 255],
+        ['name' => 'address', 'label' => 'Address', 'type' => 'textarea', 'required' => false],
+        ['name' => 'is_active', 'label' => 'Active', 'type' => 'checkbox', 'checked' => true],
+    ];
+    $createFormFieldsJson = json_encode($createFormFields);
 @endphp
 
 <form method="POST" action="{{ isset($formAction) ? $formAction : route('transport-logs.store') }}" id="transport-form" x-data="transportForm" x-init="recalc()">
     @isset($formMethod) @method($formMethod) @endisset
     @csrf
 
-    <div class="space-y-8">
+    @if($log && $hasPayments)
+    <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+        <div class="flex items-start gap-3">
+            <svg class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div class="flex-1">
+                <h3 class="text-sm font-semibold text-amber-800 dark:text-amber-200">Warning: Fuel Station Reassignment Will Reverse Payments</h3>
+                <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                    Changing the fuel station for this log will reverse {{ $paymentCount }} existing payment(s) totaling ₹{{ number_format($totalPaid, 2) }} currently recorded against <strong>{{ $oldStationName }}</strong>.
+                    You will need to re-record these payments against the new station if applicable.
+                </p>
+                <label class="mt-2 flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+                    <input type="checkbox" name="confirm_reassignment" value="1" class="rounded border-amber-300 text-amber-600 focus:ring-amber-500" required>
+                    <span>I understand the payments will be reversed and I may need to re-record them.</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    @endif
+
+<div class="space-y-8">
     @foreach($sections as $label => $fields)
         <fieldset class="space-y-4">
             <legend class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{{ $label }}</legend>
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 @foreach($fields as $field)
-                @if($field === 'fuel_station_id')
-                    <div class="sm:col-span-2 lg:col-span-1"
-                         x-data="fuelStationPicker({
-                             stations: {{ $fuelStations->toJson() }},
-                             initialId: @if($log && $log->fuel_station_id) {{ (int) $log->fuel_station_id }} @else null @endif,
-                             initialName: @if($log && $log->fuelStation) @js($log->fuelStation->name) @else @js(old('fuel_station_name')) @endif,
-                             createUrl: '{{ route('accounts.create', ['type' => 'fuel_station']) }}'
-                         })">
-                        <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Fuel Station</label>
-                        <div class="relative mt-1.5" @click.outside="open = false">
-    <input
-        type="text"
-        x-model="query"
-        @input="filter()"
-        @focus="open = true; filter()"
-        @keydown.escape="open = false"
-        @keydown.arrow-down.prevent="move(1)"
-        @keydown.arrow-up.prevent="move(-1)"
-        @keydown.enter.prevent="selectHighlighted()"
-        placeholder="Search fuel station..."
-        autocomplete="off"
-        class="block w-full rounded-lg border-zinc-300 bg-white text-zinc-900 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm"
-        :class="{ 'border-red-300 ring-red-200 focus:border-red-500 focus:ring-red-500': error }"
-    />
-    <input type="hidden" name="fuel_station_id" :value="selectedId">
-
-    <div
-        x-show="open"
-        x-cloak
-        x-transition.opacity
-        class="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-premium-lg dark:border-zinc-700 dark:bg-zinc-800"
-    >
-        <template x-for="(station, idx) in filtered" :key="station.id">
-            <button
-                type="button"
-                @click="select(station)"
-                @mouseenter="highlighted = idx"
-                :class="highlighted === idx
-                    ? 'bg-zinc-100 dark:bg-zinc-700'
-                    : 'bg-transparent'"
-                class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors"
-            >
-                <span
-                    class="min-w-0 truncate font-medium text-zinc-900 dark:text-zinc-50"
-                    x-text="station.name"
-                ></span>
-                <template x-if="station.branch">
-                    <span
-                        class="shrink-0 text-xs text-zinc-500 dark:text-zinc-400"
-                        x-text="station.branch"
-                    ></span>
-                </template>
-            </button>
-        </template>
-
-        <div x-show="filtered.length === 0" class="px-3 py-3 text-sm text-zinc-600 dark:text-zinc-300">
-            <p>No fuel station found.</p>
-            
-                :href="createUrl + (query && !hasExactMatch ? '&name=' + encodeURIComponent(query) : '')"
-                target="_blank"
-                class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-300 dark:hover:text-brand-200"
-            >
-                + Add <span class="font-mono" x-text="query || 'new station'"></span> as a new station →
-            </a>
-        </div>
-    </div>
-</div>
-
-                        <div class="mt-1.5 flex items-center justify-between text-xs">
-                            <p class="text-zinc-500 dark:text-zinc-400">
-                                <span x-show="!selectedId">No fuel station selected — <a :href="createUrl" target="_blank" class="text-brand-600 hover:text-brand-700 dark:text-brand-400">create one</a></span>
-                                <span x-show="selectedId">Current balance:
-                                    <span :class="selectedBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'" class="font-medium" x-text="'₹' + Number(selectedBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })"></span>
-                                </span>
-                            </p>
-                            <button type="button" x-show="selectedId" @click="clear()" class="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200">Clear</button>
+                    @if($field === 'fuel_station_id')
+                        <div class="sm:col-span-2 lg:col-span-1">
+                            <x-ui.creatable-select
+                                name="fuel_station_id"
+                                label="Fuel Station"
+                                :options="$fuelStationsJson"
+                                :selected="$selectedFuelStationId"
+                                create-url="{{ route('entities.fuel-stations.store') }}"
+                                fallback-url="{{ route('accounts.create', ['type' => 'fuel_station']) }}"
+                                create-modal-id="add-fuel-station-modal"
+                                create-modal-title="Add New Fuel Station"
+                                :create-form-fields="$createFormFieldsJson"
+                                sync-name="fuel_station_name"
+                                placeholder="Search fuel station..."
+                                :error="$errors->has('fuel_station_id')"
+                            />
+                            @error('fuel_station_id')
+                                <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
                         </div>
-
-                        @error('fuel_station_id')
-                            <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                        @enderror
-                    </div>
-                    @continue
-                @endif
-                @php
-                    $type = match(true) {
-                        in_array($field, ['date', 'clearing_date']) => 'date',
-                        in_array($field, ['vehicle_no', 'company', 'destination', 'transport_name', 'fuel_station_name', 'logsheet_no']) => 'text',
-                        default => 'number',
-                    };
-                    $readonly = in_array($field, ['total_sale', 'total_expense', 'total_advance', 'balance_vehicle_payment']);
-                    $isRequired = in_array($field, ['date', 'vehicle_no', 'company', 'transport_name', 'destination', 'km', 'weight']);
-                @endphp
-                    <x-ui.input
-                        name="{{ $field }}"
-                        label="{{ \Illuminate\Support\Str::headline($field) }}"
-                        type="{{ $type }}"
-                        :value="$num($field)"
-                        :required="$isRequired"
-                        :readonly="$readonly"
-                        step="0.01"
-                        @input="recalc()"
-                        title="{{ $computedTooltip[$field] ?? '' }}"
-                    />
-        @endforeach
-    </div>
+                    @else
+                        @php
+                            $type = match(true) {
+                                in_array($field, ['date', 'clearing_date']) => 'date',
+                                in_array($field, ['vehicle_no', 'company', 'destination', 'transport_name', 'fuel_station_name', 'logsheet_no']) => 'text',
+                                default => 'number',
+                            };
+                            $readonly = in_array($field, ['total_sale', 'total_expense', 'total_advance', 'balance_vehicle_payment']);
+                            $isRequired = in_array($field, ['date', 'vehicle_no', 'company', 'transport_name', 'destination', 'km', 'weight']);
+                        @endphp
+                        <x-ui.input
+                            name="{{ $field }}"
+                            label="{{ \Illuminate\Support\Str::headline($field) }}"
+                            type="{{ $type }}"
+                            :value="$num($field)"
+                            :required="$isRequired"
+                            :readonly="$readonly"
+                            step="0.01"
+                            @input="recalc()"
+                            title="{{ $computedTooltip[$field] ?? '' }}"
+                        />
+                    @endif
+                @endforeach
+            </div>
 
     @if($label === 'Transport Information' && isset($log) && $log->fuel_station_id && (float) $log->diesel_advance > 0)
         @php

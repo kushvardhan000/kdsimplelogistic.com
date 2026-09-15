@@ -26,6 +26,9 @@ class Account extends Model
         'metadata',
         'aadhar_no',
         'driving_license_no',
+        'bank_account_no',
+        'bank_ifsc_code',
+        'bank_name',
         'created_by',
         'updated_by',
     ];

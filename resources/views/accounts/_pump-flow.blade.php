@@ -29,6 +29,36 @@
         </div>
     </div>
 
+    @if($account->bank_account_no || $account->bank_ifsc_code || $account->bank_name)
+        <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-premium-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <h3 class="text-sm font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">Bank Details</h3>
+            <div class="flex flex-wrap gap-4 text-sm">
+                @if($account->bank_account_no)
+                    @php
+                        $ac = preg_replace('/\s/', '', $account->bank_account_no);
+                        $masked = 'XXXX XXXX ' . substr($ac, -4);
+                    @endphp
+                    <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                        <svg class="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-9 0V4m9 2v2m-9 2v2"/></svg>
+                        Account No: <span class="font-mono">{{ $masked }}</span>
+                    </div>
+                @endif
+                @if($account->bank_ifsc_code)
+                    <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                        <svg class="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        IFSC: <span class="font-mono">{{ strtoupper($account->bank_ifsc_code) }}</span>
+                    </div>
+                @endif
+                @if($account->bank_name)
+                    <div class="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                        <svg class="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        Bank: {{ $account->bank_name }}
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
+
     @if($branches->count() > 1)
         <div class="max-w-xs">
             <label for="pump-branch-select" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Branch</label>
@@ -107,4 +137,15 @@
             </div>
         </div>
     @endif
+
+    <x-accounts.transaction-form-modal
+        id="transaction-modal-{{ $account->id }}"
+        title="Add Transaction"
+        :account="$account"
+        :currentBalance="$account->current_balance"
+        :action="route('accounts.transactions.store', $account)"
+        :branches="$branches"
+        :paymentModes="$paymentModes"
+        :paymentPlans="$paymentPlans"
+    />
 </div>

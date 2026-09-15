@@ -88,6 +88,7 @@ class TransportLogController extends Controller
         return [
             'log' => $log,
             'fuelStations' => $fuelStations,
+            'branches' => \App\Models\Branch::orderBy('name')->get(['id', 'name', 'code']),
         ];
     }
 

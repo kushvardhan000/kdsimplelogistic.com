@@ -97,6 +97,8 @@ class DatabaseSeeder extends Seeder
                 'user_id' => $admins[array_rand($admins)],
             ]);
 
+        $this->call(CustomFieldOptionSeeder::class);
+
         $this->call(AccountSeeder::class);
     }
 }

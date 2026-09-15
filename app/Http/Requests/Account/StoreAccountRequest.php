@@ -26,6 +26,9 @@ class StoreAccountRequest extends FormRequest
             'metadata' => ['nullable', 'array'],
             'aadhar_no' => ['nullable', 'string', 'max:20', 'unique:accounts,aadhar_no'],
             'driving_license_no' => ['nullable', 'string', 'max:50', 'regex:/^[A-Z0-9\-]{8,20}$/i'],
+            'bank_account_no' => ['nullable', 'string', 'max:255'],
+            'bank_ifsc_code' => ['nullable', 'string', 'max:11', 'regex:/^[A-Z]{4}0[A-Z0-9]{6}$/i'],
+            'bank_name' => ['nullable', 'string', 'max:255'],
         ];
 
         if ($this->input('type') === 'staff') {
@@ -46,7 +49,7 @@ class StoreAccountRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        foreach (['linked_fuel_station_id', 'linked_driver_id', 'aadhar_no', 'driving_license_no'] as $field) {
+        foreach (['linked_fuel_station_id', 'linked_driver_id', 'aadhar_no', 'driving_license_no', 'bank_account_no', 'bank_ifsc_code', 'bank_name'] as $field) {
             if ($this->input($field) === '') {
                 $this->merge([$field => null]);
             }
@@ -54,6 +57,10 @@ class StoreAccountRequest extends FormRequest
 
         if ($this->input('is_driver') === null) {
             $this->merge(['is_driver' => false]);
+        }
+
+        if ($this->filled('bank_ifsc_code')) {
+            $this->merge(['bank_ifsc_code' => strtoupper(trim($this->input('bank_ifsc_code')))]);
         }
     }
 }

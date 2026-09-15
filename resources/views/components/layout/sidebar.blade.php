@@ -104,6 +104,26 @@
                         <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
                         <span x-show="!sidebarIconOnly" x-cloak class="transition-opacity duration-200 whitespace-nowrap">Activity Logs</span>
                     </a>
+
+                    <a href="{{ route('logsheets.index') }}"
+                       class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors relative"
+                       :class="isActive('{{ route('logsheets.index') }}')
+                            ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                            : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50'"
+                       :title="sidebarIconOnly ? 'Logsheets' : ''">
+                        <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3h7l5 5v13a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v7h7"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 14h6M8 18h6"/></svg>
+                        <span x-show="!sidebarIconOnly" x-cloak class="transition-opacity duration-200 whitespace-nowrap">Logsheets</span>
+                    </a>
+
+                    <a href="{{ route('settings.custom-fields.index') }}"
+                       class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors relative"
+                       :class="isActive('{{ route('settings.custom-fields.index') }}')
+                            ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                            : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50'"
+                       :title="sidebarIconOnly ? 'Custom Fields' : ''">
+                        <svg class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21.25 9v.01M9 21.25V9m0 0l3.75 3.75M9 9L5.25 12.75 9 16.5"/></svg>
+                        <span x-show="!sidebarIconOnly" x-cloak class="transition-opacity duration-200 whitespace-nowrap">Custom Fields</span>
+                    </a>
                 </div>
             </div>
         @endcan

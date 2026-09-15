@@ -114,8 +114,10 @@ class AccountController extends Controller
         $filters = $this->buildFilters(request());
         $transactions = $this->ledger->getFilteredTransactions($account, $filters);
         $branches = \App\Models\Branch::all();
+        $paymentModes = \App\Models\CustomFieldOption::forField('payment_mode')->active()->ordered()->get();
+        $paymentPlans = \App\Models\CustomFieldOption::forField('payment_plan')->active()->ordered()->get();
 
-        return view('accounts.show', compact('account', 'summary', 'transactions', 'filters', 'branches'));
+        return view('accounts.show', compact('account', 'summary', 'transactions', 'filters', 'branches', 'paymentModes', 'paymentPlans'));
     }
 
     public function edit(Account $account): View
@@ -197,7 +199,10 @@ class AccountController extends Controller
             ->unique('id')
             ->values();
 
-        return view('accounts._pump-flow', compact('account', 'summary', 'transactions', 'branches', 'branchId'));
+        $paymentModes = \App\Models\CustomFieldOption::forField('payment_mode')->active()->ordered()->get();
+        $paymentPlans = \App\Models\CustomFieldOption::forField('payment_plan')->active()->ordered()->get();
+
+        return view('accounts._pump-flow', compact('account', 'summary', 'transactions', 'branches', 'branchId', 'paymentModes', 'paymentPlans'));
     }
 
     public function update(StoreAccountRequest $request, Account $account): RedirectResponse

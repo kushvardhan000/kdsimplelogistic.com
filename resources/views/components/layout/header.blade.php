@@ -83,11 +83,11 @@
             </button>
 
             <div
-                x-show="open"
-                x-cloak
-                @click.away="open = false"
-                class="absolute right-0 mt-2 w-48 rounded-xl border border-zinc-200 bg-white py-1 shadow-premium-lg dark:border-zinc-800 dark:bg-zinc-900"
-            >
+                 x-show="open"
+                 x-cloak
+                 @click.away="open = false"
+                 class="absolute right-0 z-40 mt-2 w-48 rounded-xl border border-zinc-200 bg-white py-1 shadow-premium-lg dark:border-zinc-800 dark:bg-zinc-900"
+             >
                 <div class="border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
                     <p class="text-sm font-medium text-zinc-900 dark:text-zinc-100">{{ auth()->user()?->name ?? 'Guest' }}</p>
                     <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ auth()->user()?->email ?? '' }}</p>

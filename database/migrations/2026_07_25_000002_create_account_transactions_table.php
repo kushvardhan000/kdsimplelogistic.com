@@ -14,8 +14,8 @@ return new class extends Migration
             $table->foreignId('branch_id')->nullable()->constrained()->nullOnDelete();
             $table->enum('direction', ['debit', 'credit']);
             $table->decimal('amount', 14, 2);
-            $table->enum('payment_mode', ['cash', 'bank_transfer', 'upi', 'cheque', 'other'])->nullable();
-            $table->enum('payment_plan', ['full', 'emi', 'partial'])->nullable();
+            $table->string('payment_mode')->nullable();
+            $table->string('payment_plan')->nullable();
             $table->unsignedInteger('installment_no')->nullable();
             $table->unsignedInteger('installment_total')->nullable();
             $table->string('reference_type')->nullable();
