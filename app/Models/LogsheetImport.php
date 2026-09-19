@@ -45,4 +45,14 @@ class LogsheetImport extends Model
     {
         return $this->hasMany(Logsheet::class, 'last_import_id');
     }
+
+    public function validRawRows(): HasMany
+    {
+        return $this->hasMany(LogsheetRawRow::class, 'import_id')->where('is_valid', true);
+    }
+
+    public function invalidRawRows(): HasMany
+    {
+        return $this->hasMany(LogsheetRawRow::class, 'import_id')->where('is_valid', false);
+    }
 }
