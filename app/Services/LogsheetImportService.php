@@ -3,12 +3,14 @@
 namespace App\Services;
 
 use App\Models\Logsheet;
+use App\Models\LogsheetDetail;
 use App\Models\LogsheetImport;
 use App\Models\LogsheetRawRow;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
+use Carbon\Carbon;
 
 class LogsheetImportService
 {
@@ -110,21 +112,17 @@ class LogsheetImportService
                 ];
             }
 
+            $groups = collect($raw)->groupBy('log_sheet_no');
+            $totalRowsImported = count($raw);
+            $consolidatedCount = $groups->count();
+
             $import->update([
-                'row_count' => count($raw),
-                'consolidated_count' => 0,
+                'row_count' => $totalRowsImported,
+                'consolidated_count' => $consolidatedCount,
                 'duplicate_count' => 0,
                 'invalid_count' => $invalid,
-                'status' => 'completed',
+                'status' => 'processing',
             ]);
-
-            $groups = collect($raw)->groupBy('log_sheet_no');
-            $summary = [
-                'rows_imported' => count($raw),
-                'consolidated' => $groups->count(),
-                'duplicates' => 0,
-                'invalid' => $invalid,
-            ];
 
             foreach ($groups as $logSheetNo => $items) {
                 $payloads = collect($items)->pluck('payload');
@@ -139,7 +137,7 @@ class LogsheetImportService
                 $totalActual = (float) round((float) $payloads->sum('actual_amount'), 2);
                 $totalDiff = (float) round((float) $payloads->sum('diff'), 2);
 
-                Logsheet::updateOrCreate(
+                $logsheet = Logsheet::updateOrCreate(
                     ['log_sheet_no' => $logSheetNo],
                     [
                         'date' => $date,
@@ -162,6 +160,44 @@ class LogsheetImportService
                 );
 
                 foreach ($items as $item) {
+                    $payload = $item['payload'];
+
+                    $detailDate = $this->parseDate($payload['date'] ?? null);
+                    $detailInvDate = $this->parseDate($payload['inv_date'] ?? null);
+                    $detailPosting = $this->parseDate($payload['posting_date'] ?? null);
+                    $detailBill = $this->parseDate($payload['bill_date'] ?? null);
+
+                    LogsheetDetail::create([
+                        'logsheet_id' => $logsheet->id,
+                        'log_sheet_no' => $logSheetNo,
+                        'date' => $detailDate,
+                        'invoice_no' => $payload['invoice_no'] ?? null,
+                        'inv_date' => $detailInvDate,
+                        'payer' => $payload['payer'] ?? null,
+                        'payer_name' => $payload['payer_name'] ?? null,
+                        'town' => $payload['town'] ?? null,
+                        'gross_wt' => $payload['gross_wt'] ?? null,
+                        'difference' => $payload['diff'] ?? null,
+                        'amount' => $payload['amount'] ?? null,
+                        'volume' => $payload['volume'] ?? null,
+                        'tprt_code' => $payload['tprt_code'] ?? null,
+                        'tprt_name' => $payload['tprt_name'] ?? null,
+                        'container_id' => $payload['container_id'] ?? null,
+                        'destination' => $payload['destination'] ?? null,
+                        'sap_invoice_no' => $payload['sap_invoice_no'] ?? null,
+                        'posting_date' => $detailPosting,
+                        'bill_date' => $detailBill,
+                        'vendor_inv_no' => $payload['vendor_inv_no'] ?? null,
+                        'route' => $payload['route'] ?? null,
+                        'town_2' => $payload['town_2'] ?? null,
+                        'gross_weight_2' => $payload['gross_wt'] ?? null,
+                        'booked_amount' => $payload['booked_amount'] ?? null,
+                        'actual_rate' => $payload['actual_rate'] ?? null,
+                        'actual_amount' => $payload['actual_amount'] ?? null,
+                        'diff' => $payload['diff'] ?? null,
+                        'cleared' => false,
+                    ]);
+
                     LogsheetRawRow::create([
                         'import_id' => $import->id,
                         'log_sheet_no' => $logSheetNo,
@@ -174,13 +210,15 @@ class LogsheetImportService
             }
 
             $import->update([
-                'consolidated_count' => $groups->count(),
-                'duplicate_count' => 0,
-                'invalid_count' => $invalid,
                 'status' => 'completed',
             ]);
 
-            return $summary;
+            return [
+                'rows_imported' => $totalRowsImported,
+                'consolidated' => $consolidatedCount,
+                'duplicates' => 0,
+                'invalid' => $invalid,
+            ];
         });
     }
 
@@ -292,7 +330,25 @@ class LogsheetImportService
             }
         }
 
+        foreach (['gross_wt', 'volume', 'booked_amount', 'actual_rate', 'actual_amount', 'diff', 'amount'] as $field) {
+            if (isset($payload[$field])) {
+                $payload[$field] = $this->parseNumber($payload[$field]);
+            }
+        }
+
         return $payload;
+    }
+
+    protected function parseNumber($value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $cleaned = preg_replace('/[^0-9.-]/', '', (string) $value);
+        if ($cleaned === '' || $cleaned === '-') {
+            return null;
+        }
+        return (float) $cleaned;
     }
 
     protected function isBlankRow(array $line): bool
@@ -326,17 +382,24 @@ class LogsheetImportService
         }
 
         if (is_numeric($value)) {
-            return \Carbon\Carbon::createFromFormat('Y-m-d', '1899-12-30')
+            return Carbon::createFromFormat('Y-m-d', '1899-12-30')
                 ->addDays((int) $value)
                 ->format('Y-m-d');
         }
 
         $trimmed = trim((string) $value);
-        if (preg_match('/^0+(\.0+)?$/', $trimmed)) {
+        if (preg_match('/^0+(\.0+)?$/', $trimmed) || $trimmed === '00.00.0000' || $trimmed === '0000-00-00') {
             return null;
         }
 
-        $parsed = \Carbon\Carbon::parse($trimmed);
-        return $parsed->format('Y-m-d');
+        try {
+            $parsed = Carbon::parse($trimmed);
+            if ($parsed->year < 1900) {
+                return null;
+            }
+            return $parsed->format('Y-m-d');
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 }

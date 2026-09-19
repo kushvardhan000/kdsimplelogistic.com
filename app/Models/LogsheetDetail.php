@@ -22,11 +22,24 @@ class LogsheetDetail extends Model
         'posting_date' => 'date',
         'bill_date' => 'date',
         'cleared' => 'boolean',
+        'gross_wt' => 'decimal:3',
+        'difference' => 'decimal:3',
+        'amount' => 'decimal:2',
+        'volume' => 'decimal:3',
+        'gross_weight_2' => 'decimal:3',
+        'booked_amount' => 'decimal:2',
+        'actual_rate' => 'decimal:2',
+        'actual_amount' => 'decimal:2',
+        'diff' => 'decimal:2',
     ];
 
-    // each detail row BELONGS TO one logsheet
     public function logsheet(): BelongsTo
     {
         return $this->belongsTo(Logsheet::class);
+    }
+
+    public function rawRow(): BelongsTo
+    {
+        return $this->belongsTo(LogsheetRawRow::class, 'log_sheet_no', 'log_sheet_no');
     }
 }
