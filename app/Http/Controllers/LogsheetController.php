@@ -6,21 +6,81 @@ use App\Models\Logsheet;
 use App\Models\LogsheetDetail;
 use App\Models\LogsheetImport;
 use App\Models\LogsheetRawRow;
+use App\Services\LogsheetClearingService;
 use App\Services\LogsheetImportService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class LogsheetController extends Controller
 {
     public function __construct(
-        private LogsheetImportService $importService
+        private LogsheetImportService $importService,
+        private LogsheetClearingService $clearingService
     ) {}
 
     public function index(Request $request): View
+    {
+        $request->validate([
+            'period_from' => ['nullable', 'date_format:Y-m-d'],
+            'period_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:period_from'],
+        ]);
+
+        $query = LogsheetImport::query()
+            ->select('logsheet_imports.*')
+            ->selectSub(
+                LogsheetRawRow::query()
+                    ->selectRaw('COUNT(DISTINCT log_sheet_no)')
+                    ->whereColumn('import_id', 'logsheet_imports.id')
+                    ->where('is_valid', true),
+                'log_sheet_numbers_count'
+            )
+            ->selectSub(
+                Logsheet::query()
+                    ->selectRaw('COUNT(*)')
+                    ->where('status', 'cleared')
+                    ->whereExists(function ($subquery) {
+                        $subquery->select(DB::raw(1))
+                            ->from('logsheet_raw_rows')
+                            ->whereColumn('logsheet_raw_rows.log_sheet_no', 'logsheets.log_sheet_no')
+                            ->whereColumn('logsheet_raw_rows.import_id', 'logsheet_imports.id')
+                            ->where('logsheet_raw_rows.is_valid', true);
+                    }),
+                'cleared_count'
+            )
+            ->with(['uploader'])
+            ->orderByDesc('date_from')
+            ->orderByDesc('id');
+
+        // Period filter: import matches if its range overlaps with the filter range
+        if ($request->filled('period_from')) {
+            $query->where('date_to', '>=', $request->input('period_from'));
+        }
+        if ($request->filled('period_to')) {
+            $query->where('date_from', '<=', $request->input('period_to'));
+        }
+
+        $imports = $query->paginate(15)->withQueryString();
+
+        // Grand total over filtered set
+        $summaryQuery = clone $query;
+        $summaryQuery->getQuery()->orders = [];
+        $summaryQuery->getQuery()->limit = null;
+        $summaryQuery->getQuery()->offset = null;
+        $grandTotal = $summaryQuery->sum('total_amount');
+
+        return view('logsheets.index', [
+            'imports' => $imports,
+            'grandTotal' => $grandTotal,
+            'filters' => $request->only(['period_from', 'period_to']),
+        ]);
+    }
+
+    public function records(Request $request): View
     {
         $request->validate([
             'date_from' => ['nullable', 'date_format:Y-m-d'],
@@ -37,7 +97,7 @@ class LogsheetController extends Controller
         ]);
 
         $query = Logsheet::query()
-            ->with(['details' => fn ($details) => $details->orderBy('id')]);
+            ->with(['lastImport', 'details' => fn ($details) => $details->orderBy('id')]);
 
         $logSheetNo = trim((string) $request->input('log_sheet_no', ''));
         if ($logSheetNo !== '') {
@@ -167,37 +227,65 @@ class LogsheetController extends Controller
 
         $logsheets = $query->paginate(25)->withQueryString();
 
-        $summaryQuery = clone $query;
-        $summaryQuery->setEagerLoads([]);
-        $summaryQuery->getQuery()->orders = [];
-        $summaryQuery->getQuery()->limit = null;
-        $summaryQuery->getQuery()->offset = null;
-
-        return view('logsheets.index', [
+        return view('logsheets.records', [
             'logsheets' => $logsheets,
-            'totalImports' => $summaryQuery->count(),
-            'pendingCount' => (clone $summaryQuery)->where('status', 'pending')->count(),
-            'clearedCount' => (clone $summaryQuery)->where('status', 'cleared')->count(),
-            'totalGrossWt' => (clone $summaryQuery)->sum('total_gross_wt'),
-            'totalBookedAmount' => (clone $summaryQuery)->sum('total_booked_amount'),
-            'totalActualAmount' => (clone $summaryQuery)->sum('total_actual_amount'),
-            'totalDiff' => (clone $summaryQuery)->sum('total_diff'),
             'filters' => $request->all(),
             'sortField' => $sortField,
             'sortDirection' => $sortDirection,
         ]);
     }
 
+    public function importShow(LogsheetImport $import): View
+    {
+        $import->load(['uploader']);
+
+        $logsheets = Logsheet::where('last_import_id', $import->id)
+            ->with(['lastImport'])
+            ->orderBy('log_sheet_no')
+            ->get();
+
+        $invalidRows = LogsheetRawRow::where('import_id', $import->id)
+            ->where('is_valid', false)
+            ->orderBy('row_number_in_file')
+            ->get();
+
+        $clearedCount = $logsheets->where('status', 'cleared')->count();
+        $totalCount = $logsheets->count();
+
+        return view('logsheets.imports.show', [
+            'import' => $import,
+            'logsheets' => $logsheets,
+            'invalidRows' => $invalidRows,
+            'clearedCount' => $clearedCount,
+            'totalCount' => $totalCount,
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls,csv'],
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:20480'],
+            'date_from' => ['required', 'date_format:Y-m-d'],
+            'date_to' => ['required', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ]);
 
         $file = $request->file('file');
-        $summary = $this->importService->import($file);
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
 
-        return back()->with('success', 'Imported '.($summary['rows_imported'] ?? 0).' rows into '.($summary['consolidated'] ?? 0).' consolidated log sheets. Invalid rows: '.($summary['invalid'] ?? 0).'.');
+        try {
+            $summary = $this->importService->import($file, $dateFrom, $dateTo);
+        } catch (\Throwable $e) {
+            return back()->withInput()->with('error', 'Import failed: ' . $e->getMessage());
+        }
+
+        $successMsg = 'Imported ' . ($summary['rows_imported'] ?? 0) . ' rows into ' . ($summary['consolidated'] ?? 0) . ' consolidated log sheets. Total ₹' . ($summary['total_amount'] ?? '0.00') . '. Invalid rows: ' . ($summary['invalid'] ?? 0) . '.';
+
+        if (($summary['out_of_range_rows'] ?? 0) > 0) {
+            return back()->with('success', $successMsg)->with('warning', 'Out-of-range rows kept and counted: ' . $summary['out_of_range_rows']);
+        }
+
+        return back()->with('success', $successMsg);
     }
 
     public function show(Logsheet $logsheet): View
@@ -214,56 +302,114 @@ class LogsheetController extends Controller
         ]);
     }
 
+    public function clearPreview(Request $request): JsonResponse
+    {
+        $request->validate([
+            'numbers' => ['required', 'array', 'min:1'],
+            'numbers.*' => ['string'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+        ]);
+
+        try {
+            $preview = $this->clearingService->preview(
+                $request->input('numbers', []),
+                $request->input('date_from'),
+                $request->input('date_to')
+            );
+        } catch (\Throwable $e) {
+            Log::error('Logsheet clear preview failed', ['exception' => $e]);
+
+            return response()->json(['message' => 'Could not check the selected log sheets. Please try again.'], 500);
+        }
+
+        return response()->json($preview);
+    }
+
+    public function clearBulk(Request $request): JsonResponse|RedirectResponse
+    {
+        $request->validate([
+            'numbers' => ['required', 'array', 'min:1'],
+            'numbers.*' => ['string'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+        ]);
+
+        $numbers = $request->input('numbers', []);
+        $dateFrom = $request->input('date_from');
+        $dateTo = $request->input('date_to');
+        $user = Auth::user();
+
+        $expectsJson = $request->expectsJson() || $request->boolean('expects_json');
+
+        try {
+            $report = $this->clearingService->clear($numbers, $dateFrom, $dateTo, $user);
+        } catch (\Throwable $e) {
+            Log::error('Logsheet bulk clear failed', ['exception' => $e]);
+
+            if ($expectsJson) {
+                return response()->json(['message' => 'Could not clear the selected log sheets. Please try again.'], 500);
+            }
+
+            return back()->with('error', 'Could not clear the selected log sheets. Please try again.')->withInput();
+        }
+
+        if ($expectsJson) {
+            return response()->json($report);
+        }
+
+        $cleared = $report['counts']['cleared'];
+        $alreadyCleared = $report['counts']['already_cleared'];
+        $notFound = $report['counts']['not_found'];
+        $outOfRange = $report['counts']['out_of_range'] ?? 0;
+        $totalClearedAmount = $report['total_cleared_amount'] ?? '0.00';
+        $totalRecordsCleared = $report['total_records_cleared'] ?? 0;
+
+        $summary = "Cleared {$cleared} log sheets ({$totalRecordsCleared} records) · already cleared {$alreadyCleared} · not found {$notFound}";
+        if ($outOfRange > 0) {
+            $summary .= " · out of range {$outOfRange}";
+        }
+
+        return back()
+            ->with('success', $summary)
+            ->with('clear_report', $report)
+            ->withInput();
+    }
+
     public function clearLogsheet(Request $request): RedirectResponse
     {
-        $logSheetNo = ltrim($request->input('log_sheet_no'), '0');
-        $logSheetNo = $logSheetNo === '' ? $request->input('log_sheet_no') : $logSheetNo;
-        $request->merge(['log_sheet_no' => $logSheetNo]);
+        $numbers = $this->clearingService->normalize($request->input('log_sheet_no', ''));
+
+        $request->merge(['log_sheet_no' => $numbers[0] ?? '']);
 
         $request->validate([
             'log_sheet_no' => ['required', 'string', 'exists:logsheets,log_sheet_no'],
         ]);
 
-        $logsheet = Logsheet::where('log_sheet_no', $logSheetNo)->first();
+        $report = $this->clearingService->clearSingle(
+            $numbers[0] ?? '',
+            null,
+            null,
+            Auth::user()
+        );
 
-        if ($logsheet->status === 'cleared') {
+        $item = $report['items'][0] ?? null;
+
+        if ($item && $item['status'] === 'cleared') {
+            return back()->with('success', 'Log sheet cleared successfully.');
+        }
+
+        if ($item && $item['status'] === 'already_cleared') {
             return back()->with('info', 'This log sheet is already cleared.');
         }
 
-        $user = Auth::user();
-        DB::transaction(function () use ($logsheet, $user, $request) {
-            $logsheet->update([
-                'status' => 'cleared',
-                'cleared_at' => now(),
-                'cleared_by' => $user?->id,
-            ]);
-
-            $logsheet->clearings()->create([
-                'cleared_by' => $user?->id,
-                'cleared_at' => now(),
-                'invoice_no_reference' => $request->input('invoice_no_reference'),
-                'notes' => $request->input('notes'),
-            ]);
-
-            $logsheet->details()->update(['cleared' => true]);
-        });
-
-        return back()->with('success', 'Log sheet cleared successfully.');
+        return back()->with('error', 'Log sheet not found.');
     }
 
-    public function destroy(Logsheet $logsheet): RedirectResponse
+    public function destroy(Logsheet $logsheet): \Illuminate\Http\RedirectResponse
     {
         $logsheet->delete();
 
-        return back()->with('success', 'Logsheet deleted successfully.');
-    }
-
-    public function download(LogsheetImport $import): RedirectResponse
-    {
-        if (! $import->file_path) {
-            return back()->with('error', 'No file found for this import.');
-        }
-
-        return Storage::disk('public')->download($import->file_path, $import->original_filename);
+        return redirect()->route('logsheets.records')->with('success', 'Log sheet deleted successfully.');
     }
 }

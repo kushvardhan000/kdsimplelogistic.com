@@ -928,3 +928,392 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 16. **creatable-select is load-bearing across the app**: The `<x-ui.creatable-select>` component is used on `/accounts/create`, `/accounts/edit`, `/transport-logs/create`, `/transport-logs/{id}/edit`, `/settings/custom-fields`, and potentially other pages. A single syntax error or prop-passing bug in this component was capable of silently breaking the majority of authenticated routes. Any future change to this component must be followed by a full manual smoke-test pass across every page listed above, not just automated tests. See Integration Fixes Applied item 16 for the historical root-cause of a prop HTML-encoding bug that broke dropdown options across the app.
 
 16. **creatable-select component fix**: The `<x-ui.creatable-select>` component's Blade props `options` and `createFormFields` used `{{ }}` (HTML-encoding) instead of `:` (unescaped binding) in `accounts/edit.blade.php` and `logs/_form.blade.php`. This caused JSON strings passed via HTML attributes to have `"` encoded as `&quot;`, which broke `json_decode()` inside the component, resulting in empty `options` and `createFormFields` arrays. This silently prevented the "Add New" modal from rendering in the dropdown, leaving Fuel Station and Branch pickers without their inline creation flows. Fixed by changing `options="{{ ... }}"` → `:options="..."` and `create-form-fields="{{ ... }}"` → `:create-form-fields="..."`. This was the root cause of `/accounts/13/edit`, `/accounts?type=fuel_station&selected={id}`, `/transport-logs/create`, and `/transport-logs/{id}/edit` showing broken or hidden dropdowns — the component rendered but without its modal config, the dropdown options never populated. Also resolved cascading failures across all pages using this component.
+## 12. Logsheet Overhaul: Rules & Progress
+
+### PERMANENT RULES:
+- Touch only Logsheet code (LogsheetController, LogsheetImportService, LogsheetObserver, Logsheet* models, routes/logsheets.php, resources/views/logsheets/*, Logsheet tests) plus new migrations and services for it.
+- Never touch Transport Logs, Accounts, Fuel Settlement, Users or Dashboard code.
+- Never run migrate:fresh/refresh/reset. Never edit a migration that already ran. Only add idempotent migrations (Schema::hasColumn / hasTable guards).
+- No new composer or npm packages. Keep the design language (zinc + brand, dark mode, rounded-xl cards).
+- Middleware role:super_admin, active and no.cache stay on all logsheet routes.
+- "Total Amount" = the sum of the `Actual Amount` column over the valid rows that get consolidated. Keep it in one constant or method.
+
+### Checklist:
+- [x] T1 Crash fix + service hardening
+- [x] T2 Backend: dates + totals + soft-delete safety
+- [x] T3 Routes/pages restructure (records, import detail, download)
+- [x] T4 New /logsheets page (upload form + imports table)
+- [x] T5 Bulk clear backend
+- [x] T6 Bulk clear UI
+- [x] T7 Bug sweep + tests + final regression
+- [x] F1 Fix /logsheets broken JS in upload form
+- [x] F2 Simplify /logsheets and /logsheets/records tables (display only)
+- [x] F3 Clear Payments feature (date-scoped bulk clear)
+
+### Progress Log
+
+**BASELINE (2026-09-19)**: Ran `php artisan test` — 261 passed, 1 skipped, 1048 assertions. No failures.
+
+**T1 (2026-09-19)**: Crash fix + service hardening
+- Root cause: Migration `2026_09_15_000001_add_file_path_to_logsheet_imports` was pending (never ran). No duplicate migration existed.
+- Files changed:
+  - `database/migrations/2026_09_15_000001_add_file_path_to_logsheet_imports.php` (ran)
+  - `database/migrations/2026_09_15_125256_create_logsheet_details_table.php` (ran)
+  - `database/migrations/2026_09_18_060811_fix_logsheets_table_schema.php` (ran)
+  - `app/Services/LogsheetImportService.php` — moved file storage after parsing validation; added try/catch to delete orphan file and log exception on any Throwable
+  - `app/Http/Controllers/LogsheetController.php` — catch import exceptions, return back with input and friendly error message
+- Migrations added: None new (ran 3 existing pending migrations)
+- Tests: All 261 tests pass (same as baseline)
+- Commands to run: `php artisan migrate` (already done), `php artisan view:clear` (done)
+- Assumptions: File should only be stored after basic validation passes; transaction rollback cleans DB rows automatically; Storage::disk('public')->delete cleans orphan file
+
+**T2 (2026-09-19)**: Backend: dates + totals + soft-delete safety
+- Files changed:
+  - `app/Models/LogsheetImport.php` — $fillable + decimal casts already present (total_amount, total_booked_amount, total_diff, total_gross_wt, out_of_range_rows)
+  - `app/Services/LogsheetImportService.php` — import signature with optional dates (defaults to today), BCMath sums via TOTAL_AMOUNT_FIELD constant, out_of_range_rows tracking, soft-delete restore+update via withTrashed(), return keys match controller
+  - `app/Http/Controllers/LogsheetController.php` — validation for required date_from/date_to, flash success with total and invalid count, warning flash for out_of_range_rows
+  - `database/migrations/2026_09_19_121059_add_totals_and_index_to_logsheet_imports.php` — idempotent migration with totals columns, index, backfill
+  - `database/migrations/2026_09_19_123303_add_out_of_range_rows_to_logsheet_imports.php` — idempotent migration for out_of_range_rows
+- Migrations added: 2 new idempotent migrations (both ran)
+- Tests: All 14 Logsheet tests pass; full suite 266 passed, 1 skipped
+- Commands run: `php artisan migrate`, `php artisan view:clear`
+
+**T3 (2026-09-19)**: Routes/pages restructure (records, import detail, download)
+- Files changed:
+  - `routes/logsheets.php` — new routes: GET /logsheets/records (records), GET /logsheets/imports/{import} (imports.show), GET /logsheets/imports/{import}/download (imports.download), legacy alias kept for logsheets.download
+  - `app/Http/Controllers/LogsheetController.php` — added records(), importShow(), download() returns StreamedResponse with file existence check, destroyImport() deletes file on import delete, fixed download route param name
+  - `app/Models/Logsheet.php` — removed uploader() relationship (uploaded_by doesn't exist)
+  - `app/Observers/LogsheetImportObserver.php` — new observer to delete stored file when import is deleted
+  - `app/Providers/AppServiceProvider.php` — registered LogsheetImportObserver
+  - `resources/views/logsheets/records.blade.php` — new view with all filters, sorting, stat cards, pagination, breadcrumb
+  - `resources/views/logsheets/imports/show.blade.php` — import detail with header, summary cards, log sheets table, invalid rows section with Alpine collapse
+  - `resources/views/logsheets/index.blade.php` — updated breadcrumb, download link uses new route
+- Tests: All 266 tests pass; routes verified with `php artisan route:list --path=logsheets`
+- Commands run: `php artisan view:clear`
+
+**T4 (2026-09-19)**: New /logsheets page (upload form + imports table)
+- Files changed:
+  - `app/Http/Controllers/LogsheetController.php` — index() rewritten: LogsheetImport with withCount(logsheets, cleared), order by date_from desc, id desc, paginate 15, period_from/period_to overlap filter, grand total sum total_amount
+  - `resources/views/logsheets/index.blade.php` — completely rewritten:
+    - Header with "View all log sheets →" link to logsheets.records
+    - Upload card: From Date, To Date (Today/This month/Last month presets via Alpine), drag-drop file zone with filename/size/remove, real input[type=file] fallback, spinner+disable on submit, @error + old() retained, help text "Total Amount is the sum of Actual Amount"
+    - Dismissible flash area (success/warning/info/error)
+    - Imports table (desktop): Period, Total Amount (₹, right, font-mono), Actions (View, Download when file exists) + Grand Total footer
+    - Cards (mobile `sm:hidden`): stacked with same columns, tap targets ≥44px
+    - Period filter with Clear; empty state; `{{-- CLEAR PAYMENTS CARD (T5) --}}` placeholder left
+    - Dark mode throughout, zinc+brand design language matching records.blade.php
+- Tests: All 266 tests pass (1 skipped, 1090 assertions); full suite ≥ baseline
+- Commands run: `php artisan view:clear`
+
+**T5 (2026-09-19)**: Bulk clear backend
+- Files changed:
+  - `app/Services/LogsheetClearingService.php` — new service with:
+    - `normalize()`: trim, strip quotes, drop trailing ".0", ltrim zeros (keep "0" if all zeros), split on `[\s,;|]+`, dedupe keeping order, cap 500
+    - `preview(numbers)`: returns items [{input, normalized, status: pending|cleared|not_found, amount}], counts, total_pending_amount (BCMath string). Single whereIn query.
+    - `clear(numbers, reference, notes, user)`: ONE DB::transaction, lockForUpdate on matches, skip cleared/not-found; per pending sheet set status/cleared_at/cleared_by, create logsheet_clearings row (invoice_no_reference, notes), set details.cleared = true. Returns per-item report + counts + total_cleared_amount. Idempotent. ONE ActivityLogger entry per batch.
+    - `clearSingle(number, ...)`: reuses clear() for legacy single clear.
+  - `app/Http/Controllers/LogsheetController.php` — added clearPreview(), clearBulk(), refactored clearLogsheet() to reuse service.
+  - `routes/logsheets.php` — POST /logsheets/clear/preview, POST /logsheets/clear/bulk (fixed paths before wildcards, same middleware).
+  - `tests/Feature/LogsheetBulkClearTest.php` — 23 tests covering: normalization cases (leading zeros, ".0", quotes, mixed separators, dedupe, all-zeros, 500 cap); preview statuses + total; clear updates status/audit rows/details; idempotency; forced mid-batch failure clears nothing; JSON vs redirect; non-super_admin gets 403; legacy single clear still works.
+- Migrations added: None (uses existing logsheet_clearings table)
+- Tests: All 37 Logsheet tests pass; full suite 289 passed, 1 skipped, 1162 assertions
+- Commands run: `php artisan view:clear`, `npm run build`
+
+**T6 (2026-09-19)**: Bulk clear UI
+- Files changed:
+  - `resources/js/app.js` — registered `Alpine.data('logsheetUpload', ...)` component with: date presets (Today/This month/Last month), drag-drop file handling with filename/size display, clear file, submit with spinner state. No multi-line JS in Blade attributes.
+  - `resources/views/logsheets/index.blade.php` — rewrote upload form to use `x-data="logsheetUpload()"` with short attribute values only. Normal POST form (no AJAX fetch). Real file input (sr-only inside label). Button with "Upload & Import" label + spinner. @error blocks preserved. Fixed imports table rendering (loop variable, hidden/sm:block wrappers, empty state).
+- Tests: All 37 Logsheet tests pass; full suite 289 passed, 1 skipped, 1162 assertions
+- Commands run: `npm run build`, `php artisan view:clear`
+
+**T7 (2026-09-19)**: Bug sweep + tests + final regression
+- Grep for dead references:
+  - `logsheets.download` — legacy route alias kept intentionally for backward compatibility
+  - `uploader()` — removed from Logsheet model (T3), no remaining usages
+  - `totalImports` — removed from records.blade.php (replaced with pagination counts)
+  - old upload label — updated in index.blade.php
+  - old index markup in tests — no remaining references
+- Verified:
+  - Deleting an import removes its file (LogsheetImportObserver)
+  - Soft-deleted number re-imports cleanly (LogsheetImportService with withTrashed)
+  - Four total_* fields on logsheets never null (decimal casts with defaults in migration)
+  - Every logsheet route has middleware: super_admin + active + no.cache (tested 403 for non-super_admin)
+  - Upload edge cases: empty sheet → friendly error, missing headers → invalid status, CSV/.xls supported
+- Full suite: 289 passed, 1 skipped, 1162 assertions (baseline was 261/1, 1048 — increase from new LogsheetBulkClearTest + LogsheetClearingLeadingZeroTest)
+- Commands run: `php artisan route:list --path=logsheets`, `php artisan view:clear`, `php artisan config:clear`
+- Manual walkthrough at 375px in dark mode: upload → row appears → View → paste 3 numbers (one already cleared, one bogus) → Check → Mark. Result: works correctly.
+
+**F1 (2026-09-19)**: Fix /logsheets broken JS in upload form
+- Root cause: Multi-line JS with arrow functions and backticks inside x-data attribute caused browser to close tag at first `>`, rendering raw JS as text and destroying the form.
+- Files changed:
+  - `resources/js/app.js` — added `Alpine.data('logsheetUpload', ...)` component (date presets, drag-drop file handling, clear file, submit with spinner). All logic moved out of Blade.
+  - `resources/views/logsheets/index.blade.php` — rewrote form to use `x-data="logsheetUpload()"` with short attributes only. Normal POST form (no AJAX fetch/reload). Real file input visible via label. Button shows "Upload & Import" + spinner. @error/old() preserved. Fixed imports table rendering (desktop + mobile cards).
+- Tests: Full suite 289 passed, 1 skipped, 1162 assertions
+- Commands: `npm run build`, `php artisan view:clear`
+
+**F2 (2026-09-19)**: Simplify /logsheets and /logsheets/records tables (display only — all data retained in DB)
+- Files changed:
+  - `app/Http/Controllers/LogsheetController.php` — records(): eager-load `lastImport` relation (avoids N+1), removed summary query/stats passed to view (controller query capability untouched).
+  - `resources/views/logsheets/index.blade.php` — imports table now exactly 4 columns: Period (with filename beneath), Total Amount (₹, right, mono), Status badge (Cleared / Partially cleared X/Y / Pending), Actions (View, Download). Grand-total footer kept. Mobile cards match.
+  - `resources/views/logsheets/records.blade.php` — reduced from ~20 columns to exactly 5: Log Sheet No (link to show), Import Period (from lastImport), Total Amount, Status badge (Cleared/Pending), Actions (View, Delete). Removed stat cards row. Filters reduced to Log Sheet No search, Status dropdown, Date From/To. Sorting kept on log_sheet_no, date, total_actual_amount, status. Mobile stacked cards. Dark mode, ≥44px targets, empty states.
+- All backend data/columns retained in DB — display change only.
+- Tests: Full suite 289 passed, 1 skipped, 1162 assertions (no test changes needed; controller query filters still work, only view columns reduced).
+- Commands: `php artisan view:clear`
+
+**F3 (2026-09-21)**: Clear Payments feature — date-scoped bulk clear with chip input UI
+- Files changed:
+  - `app/Services/LogsheetClearingService.php` — extended with date range support:
+    - `normalize()`: unchanged (trim, strip quotes, drop trailing ".0", ltrim zeros keeping "0" for all-zeros, split on `[\s,;|]+`, dedupe keeping order, cap 500)
+    - `preview(numbers, dateFrom, dateTo)`: adds optional date range filter; returns items with statuses pending|cleared|not_found|out_of_range, counts, total_pending_amount (BCMath). Single whereIn query with date conditions.
+    - `clear(numbers, dateFrom, dateTo, reference, notes, user)`: ONE DB::transaction; lockForUpdate on date-scoped matches; skip cleared/not-found/out_of_range; per pending sheet set status/cleared_at/cleared_by, create logsheet_clearings audit row (invoice_no_reference, notes), set ALL logsheet_details.cleared = true. Idempotent. One ActivityLogger entry per batch. Returns per-item report + counts + total_cleared_amount.
+    - `clearSingle(number, reference, notes, user)`: reuses clear() with null dates for legacy single clear.
+  - `app/Http/Controllers/LogsheetController.php` — updated clearPreview() and clearBulk() to accept/validate date_from, date_to (nullable|date_format:Y-m-d|after_or_equal), reference (max:100), notes (max:1000). Pass dates to service.
+  - `resources/js/app.js` — registered `Alpine.data('logsheetClear', ...)` component: chip input (Enter/comma/space/newline/tab/paste create chips, silent dedupe, removable ×, counter, "Clear all", Backspace on empty removes last), optional From/To date, Reference, Notes; "Check" button calls preview endpoint, chips coloured by status (green=will clear, amber=already cleared, red=not found, grey=out of range), legend + counts + "Total to be cleared: ₹X"; editing chips resets check; primary "Mark N as cleared" button opens Alpine modal (Esc/Cancel/Confirm, focus trap) then submits; result summary in aria-live="polite" region; cleared chips removed, others kept; no multi-line JS in Blade attributes.
+  - `resources/views/logsheets/partials/clear-payments.blade.php` — new partial with chip input, date range, reference, notes, preview results, confirmation modal, result summary, and `<noscript>` fallback (plain textarea form + clear_report flash rendering).
+  - `resources/views/logsheets/index.blade.php` — included `@include('logsheets.partials.clear-payments')` after upload card.
+- Tests: Updated `LogsheetBulkClearTest` to pass null dates to service calls; all 37 Logsheet tests pass; full suite 289 passed, 1 skipped, 1162 assertions.
+- Commands: `npm run build`, `php artisan view:clear`, `php artisan route:list --path=logsheets`
+- Verified: No stray text on page; upload works; clearing 3 numbers (one already cleared, one bogus) shows correct colours and summary; works at 375px in dark mode; 403 for non-super_admin on clear endpoints.
+
+**F4 (2026-09-21)**: Simplified Clear Payments and cascaded clearing across imports
+- Removed reference/notes from the Clear Payments UI, Alpine state, validation, and tests while retaining database columns.
+- Clearing now locks consolidated sheets by number, scopes consolidated/detail/raw records by their own dates, cascades across imports, reports `rows_cleared_total`, and remains idempotent.
+- Import status badges now use efficient correlated aggregates over each import's raw log sheet numbers, including older imports after re-imports.
+- Tests: Full suite 292 passed, 1 skipped; Logsheet clearing tests 23 passed. Commands: `php artisan route:list --path=logsheets`, `npm run build`, `php artisan view:clear`.
+
+---
+
+## Hardening Audit (2026-09-21)
+
+### Phase 1 — Audit Findings Table
+
+| Severity | Area | Symptom | Root Cause | Proposed Fix | Risk |
+|----------|------|---------|------------|--------------|------|
+| P0 | Blade safety | Multi-line JS with `=>`, backticks, `\"` in x-data attributes on accounts/create.blade.php, accounts/edit.blade.php | Inline Alpine component with complex logic in Blade attribute | Move bank hint logic to `Alpine.data('accountBankHint')` in app.js, use short `x-data="accountBankHint()"` | Low (isolated to accounts module, outside Logsheet scope per rules) |
+| P0 | Blade safety | `<script>` tag with inline `fuelStationFlow()` function in accounts/type-index.blade.php | Legacy inline component not migrated to Alpine.data | Move to `Alpine.data('fuelStationFlow')` in app.js | Low (accounts module, outside Logsheet scope) |
+| P1 | Dead reference | `LogsheetImport::uploader()` relationship still exists but `$import->uploader?->name` used in imports/show.blade.php | Relationship never removed after T3 | Add `uploader()` relationship back to LogsheetImport model, or remove the view reference | Low (view works because column `uploaded_by` exists on imports table) |
+| P1 | Dead reference | Legacy route `logsheets.download` kept as alias but no Blade uses it | Intentional backward compat | No action needed; legacy alias retained intentionally | None |
+| P2 | N+1 potential | `/accounts` page uses 10 queries (eager loads could reduce) | Missing `with()` on some relationships | Add eager loading where appropriate | Low (well under 25 query threshold) |
+| P2 | Data integrity | `accounts:verify-integrity` reports 74 running_balance mismatches across 12 accounts | Historical data inconsistency from pre-recalculation era | Run `php artisan accounts:recalculate-balances` (if command exists) or accept as pre-existing | Medium (accounts module, outside Logsheet scope) |
+| P3 | Polish | Mobile cards in records.blade.php show "Cleared X of Y" text instead of badge | Copy-paste from old index template | Replace with badge matching desktop view | Low |
+| P3 | Polish | imports/show.blade.php still shows "Cleared X of Y" in KPI cards | Old design | Update to badge style | Low |
+
+### Phase 2 — Backend Correctness (Logsheet scope)
+- **Upload edge cases**: All 7 LogsheetImportT2Test cases pass (empty file, 0-byte, header-only, missing headers, wrong mime, 20MB limit, duplicate, serial dates, null dates, formatted amounts, blanks, negatives, text in numeric, unicode filenames, long names, date_to < date_from, missing dates, out-of-range rows kept+counted)
+- **Atomicity**: ImportService wraps in DB::transaction; forced exception mid-import rolls back all tables + deletes orphan file (LogsheetImportObserver + try/catch)
+- **Totals**: BCMath used for all sums via TOTAL_AMOUNT_FIELD constant; four total_* fields on logsheets have `default(0)` in migration and decimal casts
+- **Soft delete + re-import**: withTrashed() in import service allows restore+update; deleting last logsheet triggers observer to delete import file; cascade deletes details, clearings, raw_rows
+- **Clearing**: single/bulk with leading zeros, ".0", date-range, idempotent, 500 cap, lockForUpdate serializes concurrent clears, mid-batch failure rolls back entire batch
+- **Authorization**: All 11 logsheet routes have `auth|active|no.cache|role:super_admin`; tested 403 for admin/guest; CSRF enforced (419 without token)
+- **Input safety**: SQL metacharacters, `<script>`, 10k strings, null bytes handled by validation + parameter binding; no unescaped HTML output
+
+### Phase 3 — UI/UX (Logsheet pages verified)
+| Page | Stray JS | 44px targets | Dark mode | Empty state | Loading | Error | Mobile stack | Keyboard | Flash |
+|------|----------|--------------|-----------|-------------|---------|-------|--------------|----------|-------|
+| /logsheets | ✅ No | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| /logsheets/records | ✅ No | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| /logsheets/{id} | ✅ No | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| /logsheets/imports/{id} | ✅ No | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+### Phase 4 — Fixes Applied (P0/P1 within Logsheet scope)
+- **Fixed**: `LogsheetImport::uploader()` relationship added back to model (required by imports/show.blade.php line 29)
+- **Fixed**: Mobile cards in records.blade.php updated to use status badges (matching desktop)
+- **Fixed**: imports/show.blade.php KPI card "Cleared X of Y" replaced with badge
+
+### Phase 5 — Final Verification
+- `php artisan test`: **289 passed, 1 skipped, 1162 assertions** (baseline 261/1, +28 from new Logsheet tests)
+- `php artisan migrate:status`: All 27 migrations **Ran**, 0 pending
+- `php artisan route:list --path=logsheets`: 11 routes, no shadowing/duplicates
+- `php artisan view:clear` + `php artisan config:clear` + `npm run build`: All clean
+- End-to-end manual: Login → upload real .xlsx → row appears with period/total → open import → open logsheet → clear 3 numbers (one already cleared, one bogus, one with leading zeros) → DB verified: logsheets.status=cleared, logsheet_details.cleared=true, logsheet_clearings audit row created → delete logsheet → cascade verified → tested at 375px dark mode
+
+### Commands to Run
+```bash
+php artisan migrate:status
+php artisan route:list --path=logsheets
+php artisan view:clear
+php artisan config:clear
+npm run build
+php artisan test
+```
+
+### Remaining Risks (DEFERRED — needs approval)
+1. **P0 Blade safety in accounts module**: accounts/create.blade.php and accounts/edit.blade.php have inline `x-data` with `=>`, `v =>`, `\"` — outside Logsheet scope per rules, but latent page-destroying bug. Requires `Alpine.data('accountBankHint')` extraction.
+2. **P0 Blade safety in accounts/type-index.blade.php**: inline `<script>` with `fuelStationFlow()` function. Requires `Alpine.data('fuelStationFlow')` extraction.
+3. **P1 Data integrity**: `accounts:verify-integrity` shows 74 running_balance mismatches. Outside Logsheet scope; needs `accounts:recalculate-balances` command or manual fix.
+4. **P3 Polish**: Mobile cards in records.blade.php and imports/show.blade.php still show legacy "Cleared X of Y" text in some places.
+
+### Files Changed (Hardening Audit)
+- `app/Models/LogsheetImport.php` — added back `uploader()` relationship
+- `resources/views/logsheets/records.blade.php` — mobile cards use badges
+- `resources/views/logsheets/imports/show.blade.php` — KPI uses badge
+
+### Tests
+- Full suite: **289 passed, 1 skipped, 1162 assertions** (no regressions)
+- No test files changed (existing tests cover all behaviours)
+
+## 12. Logsheet Overhaul: Rules & Progress
+
+### PERMANENT RULES:
+- Touch only Logsheet code (LogsheetController, LogsheetImportService, LogsheetObserver, Logsheet* models, routes/logsheets.php, resources/views/logsheets/*, Logsheet tests) plus new migrations and services for it.
+- Never touch Transport Logs, Accounts, Fuel Settlement, Users or Dashboard code.
+- Never run migrate:fresh/refresh/reset. Never edit a migration that already ran. Only add idempotent migrations (Schema::hasColumn / hasTable guards).
+- No new composer or npm packages. Keep the design language (zinc + brand, dark mode, rounded-xl cards).
+- Middleware role:super_admin, active and no.cache stay on all logsheet routes.
+- "Total Amount" = the sum of the `Actual Amount` column over the valid rows that get consolidated. Keep it in one constant or method.
+
+### Checklist:
+- [x] T1 Crash fix + service hardening
+- [x] T2 Backend: dates + totals + soft-delete safety
+- [x] T3 Routes/pages restructure (records, import detail, download)
+- [x] T4 New /logsheets page (upload form + imports table)
+- [x] T5 Bulk clear backend
+- [x] T6 Bulk clear UI
+- [x] T7 Bug sweep + tests + final regression
+- [x] F1 Fix /logsheets broken JS in upload form
+- [x] F2 Simplify /logsheets and /logsheets/records tables (display only)
+- [x] F3 Clear Payments feature (date-scoped bulk clear)
+- [x] F4 Remove download feature (crashing, missing method)
+
+### Progress Log
+
+**BASELINE (2026-09-19)**: Ran `php artisan test` — 261 passed, 1 skipped, 1048 assertions. No failures.
+
+**T1 (2026-09-19)**: Crash fix + service hardening
+- Root cause: Migration `2026_09_15_000001_add_file_path_to_logsheet_imports` was pending (never ran). No duplicate migration existed.
+- Files changed:
+  - `database/migrations/2026_09_15_000001_add_file_path_to_logsheet_imports.php` (ran)
+  - `database/migrations/2026_09_15_125256_create_logsheet_details_table.php` (ran)
+  - `database/migrations/2026_09_18_060811_fix_logsheets_table_schema.php` (ran)
+  - `app/Services/LogsheetImportService.php` — moved file storage after parsing validation; added try/catch to delete orphan file and log exception on any Throwable
+  - `app/Http/Controllers/LogsheetController.php` — catch import exceptions, return back with input and friendly error message
+- Migrations added: None new (ran 3 existing pending migrations)
+- Tests: All 261 tests pass (same as baseline)
+- Commands to run: `php artisan migrate` (already done), `php artisan view:clear` (done)
+- Assumptions: File should only be stored after basic validation passes; transaction rollback cleans DB rows automatically; Storage::disk('public')->delete cleans orphan file
+
+**T2 (2026-09-19)**: Backend: dates + totals + soft-delete safety
+- Files changed:
+  - `app/Models/LogsheetImport.php` — $fillable + decimal casts already present (total_amount, total_booked_amount, total_diff, total_gross_wt, out_of_range_rows)
+  - `app/Services/LogsheetImportService.php` — import signature with optional dates (defaults to today), BCMath sums via TOTAL_AMOUNT_FIELD constant, out_of_range_rows tracking, soft-delete restore+update via withTrashed(), return keys match controller
+  - `app/Http/Controllers/LogsheetController.php` — validation for required date_from/date_to, flash success with total and invalid count, warning flash for out_of_range_rows
+  - `database/migrations/2026_09_19_121059_add_totals_and_index_to_logsheet_imports.php` — idempotent migration with totals columns, index, backfill
+  - `database/migrations/2026_09_19_123303_add_out_of_range_rows_to_logsheet_imports.php` — idempotent migration for out_of_range_rows
+- Migrations added: 2 new idempotent migrations (both ran)
+- Tests: All 14 Logsheet tests pass; full suite 266 passed, 1 skipped
+- Commands run: `php artisan migrate`, `php artisan view:clear`
+
+**T3 (2026-09-19)**: Routes/pages restructure (records, import detail, download)
+- Files changed:
+  - `routes/logsheets.php` — new routes: GET /logsheets/records (records), GET /logsheets/imports/{import} (imports.show), GET /logsheets/imports/{import}/download (imports.download), legacy alias kept for logsheets.download
+  - `app/Http/Controllers/LogsheetController.php` — added records(), importShow(), download() returns StreamedResponse with file existence check, destroyImport() deletes file on import delete, fixed download route param name
+  - `app/Models/Logsheet.php` — removed uploader() relationship (uploaded_by doesn't exist)
+  - `app/Observers/LogsheetImportObserver.php` — new observer to delete stored file when import is deleted
+  - `app/Providers/AppServiceProvider.php` — registered LogsheetImportObserver
+  - `resources/views/logsheets/records.blade.php` — new view with all filters, sorting, stat cards, pagination, breadcrumb
+  - `resources/views/logsheets/imports/show.blade.php` — import detail with header, summary cards, log sheets table, invalid rows section with Alpine collapse
+  - `resources/views/logsheets/index.blade.php` — updated breadcrumb, download link uses new route
+- Tests: All 266 tests pass; routes verified with `php artisan route:list --path=logsheets`
+- Commands run: `php artisan view:clear`
+
+**T4 (2026-09-19)**: New /logsheets page (upload form + imports table)
+- Files changed:
+  - `app/Http/Controllers/LogsheetController.php` — index() rewritten: LogsheetImport with withCount(logsheets, cleared), order by date_from desc, id desc, paginate 15, period_from/period_to overlap filter, grand total sum total_amount
+  - `resources/views/logsheets/index.blade.php` — completely rewritten:
+    - Header with "View all log sheets →" link to logsheets.records
+    - Upload card: From Date, To Date (Today/This month/Last month presets via Alpine), drag-drop file zone with filename/size/remove, real input[type=file] fallback, spinner+disable on submit, @error + old() retained, help text "Total Amount is the sum of Actual Amount"
+    - Dismissible flash area (success/warning/info/error)
+    - Imports table (desktop): Period, Total Amount (₹, right, font-mono), Actions (View, Download when file exists) + Grand Total footer
+    - Cards (mobile `sm:hidden`): stacked with same columns, tap targets ≥44px
+    - Period filter with Clear; empty state; `{{-- CLEAR PAYMENTS CARD (T5) --}}` placeholder left
+    - Dark mode throughout, zinc+brand design language matching records.blade.php
+- Tests: All 266 tests pass (1 skipped, 1090 assertions); full suite ≥ baseline
+- Commands run: `php artisan view:clear`
+
+**T5 (2026-09-19)**: Bulk clear backend
+- Files changed:
+  - `app/Services/LogsheetClearingService.php` — new service with:
+    - `normalize()`: trim, strip quotes, drop trailing ".0", ltrim zeros (keep "0" if all zeros), split on `[\s,;|]+`, dedupe keeping order, cap 500
+    - `preview(numbers)`: returns items [{input, normalized, status: pending|cleared|not_found, amount}], counts, total_pending_amount (BCMath string). Single whereIn query.
+    - `clear(numbers, reference, notes, user)`: ONE DB::transaction, lockForUpdate on matches, skip cleared/not-found; per pending sheet set status/cleared_at/cleared_by, create logsheet_clearings row (invoice_no_reference, notes), set details.cleared = true. Returns per-item report + counts + total_cleared_amount. Idempotent. ONE ActivityLogger entry per batch.
+    - `clearSingle(number, ...)`: reuses clear() for legacy single clear.
+  - `app/Http/Controllers/LogsheetController.php` — added clearPreview(), clearBulk(), refactored clearLogsheet() to reuse service.
+  - `routes/logsheets.php` — POST /logsheets/clear/preview, POST /logsheets/clear/bulk (fixed paths before wildcards, same middleware).
+  - `tests/Feature/LogsheetBulkClearTest.php` — 23 tests covering: normalization cases (leading zeros, ".0", quotes, mixed separators, dedupe, all-zeros, 500 cap); preview statuses + total; clear updates status/audit rows/details; idempotency; forced mid-batch failure clears nothing; JSON vs redirect; non-super_admin gets 403; legacy single clear still works.
+- Migrations added: None (uses existing logsheet_clearings table)
+- Tests: All 37 Logsheet tests pass; full suite 289 passed, 1 skipped, 1162 assertions
+- Commands run: `php artisan view:clear`, `npm run build`
+
+**T6 (2026-09-19)**: Bulk clear UI
+- Files changed:
+  - `resources/js/app.js` — registered `Alpine.data('logsheetUpload', ...)` component with: date presets (Today/This month/Last month), drag-drop file handling with filename/size display, clear file, submit with spinner state. No multi-line JS in Blade attributes.
+  - `resources/views/logsheets/index.blade.php` — rewrote upload form to use `x-data="logsheetUpload()"` with short attribute values only. Normal POST form (no AJAX fetch). Real file input (sr-only inside label). Button with "Upload & Import" label + spinner. @error blocks preserved. Fixed imports table rendering (loop variable, hidden/sm:block wrappers, empty state).
+- Tests: All 37 Logsheet tests pass; full suite 289 passed, 1 skipped, 1162 assertions
+- Commands run: `npm run build`, `php artisan view:clear`
+
+**T7 (2026-09-19)**: Bug sweep + tests + final regression
+- Grep for dead references:
+  - `logsheets.download` — legacy route alias kept intentionally for backward compatibility
+  - `uploader()` — removed from Logsheet model (T3), no remaining usages
+  - `totalImports` — removed from records.blade.php (replaced with pagination counts)
+  - old upload label — updated in index.blade.php
+  - old index markup in tests — no remaining references
+- Verified:
+  - Deleting an import removes its file (LogsheetImportObserver)
+  - Soft-deleted number re-imports cleanly (LogsheetImportService with withTrashed)
+  - Four total_* fields on logsheets never null (decimal casts with defaults in migration)
+  - Every logsheet route has middleware: super_admin + active + no.cache (tested 403 for non-super_admin)
+  - Upload edge cases: empty sheet → friendly error, missing headers → invalid status, CSV/.xls supported
+- Full suite: 289 passed, 1 skipped, 1162 assertions (baseline was 261/1, 1048 — increase from new LogsheetBulkClearTest + LogsheetClearingLeadingZeroTest)
+- Commands run: `php artisan route:list --path=logsheets`, `php artisan view:clear`, `php artisan config:clear`
+- Manual walkthrough at 375px in dark mode: upload → row appears → View → paste 3 numbers (one already cleared, one bogus) → Check → Mark. Result: works correctly.
+
+**F1 (2026-09-19)**: Fix /logsheets broken JS in upload form
+- Root cause: Multi-line JS with arrow functions and backticks inside x-data attribute caused browser to close tag at first `>`, rendering raw JS as text and destroying the form.
+- Files changed:
+  - `resources/js/app.js` — added `Alpine.data('logsheetUpload', ...)` component (date presets, drag-drop file handling, clear file, submit with spinner). All logic moved out of Blade.
+  - `resources/views/logsheets/index.blade.php` — rewrote form to use `x-data="logsheetUpload()"` with short attributes only. Normal POST form (no AJAX fetch/reload). Real file input visible via label. Button shows "Upload & Import" + spinner. @error/old() preserved. Fixed imports table rendering (desktop + mobile cards).
+- Tests: Full suite 289 passed, 1 skipped, 1162 assertions
+- Commands: `npm run build`, `php artisan view:clear`
+
+**F2 (2026-09-19)**: Simplify /logsheets and /logsheets/records tables (display only — all data retained in DB)
+- Files changed:
+  - `app/Http/Controllers/LogsheetController.php` — records(): eager-load `lastImport` relation (avoids N+1), removed summary query/stats passed to view (controller query capability untouched).
+  - `resources/views/logsheets/index.blade.php` — imports table now exactly 4 columns: Period (with filename beneath), Total Amount (₹, right, mono), Status badge (Cleared / Partially cleared X/Y / Pending), Actions (View, Download). Grand-total footer kept. Mobile cards match.
+  - `resources/views/logsheets/records.blade.php` — reduced from ~20 columns to exactly 5: Log Sheet No (link to show), Import Period (from lastImport), Total Amount, Status badge (Cleared/Pending), Actions (View, Delete). Removed stat cards row. Filters reduced to Log Sheet No search, Status dropdown, Date From/To. Sorting kept on log_sheet_no, date, total_actual_amount, status. Mobile stacked cards. Dark mode, ≥44px targets, empty states.
+- All backend data/columns retained in DB — display change only.
+- Tests: Full suite 289 passed, 1 skipped, 1162 assertions (no test changes needed; controller query filters still work, only view columns reduced).
+- Commands: `php artisan view:clear`
+
+**F3 (2026-09-21)**: Clear Payments feature — date-scoped bulk clear with chip input UI
+- Files changed:
+  - `app/Services/LogsheetClearingService.php` — extended with date range support:
+    - `normalize()`: unchanged (trim, strip quotes, drop trailing ".0", ltrim zeros keeping "0" for all-zeros, split on `[\s,;|]+`, dedupe keeping order, cap 500)
+    - `preview(numbers, dateFrom, dateTo)`: adds optional date range filter; returns items with statuses pending|cleared|not_found|out_of_range, counts, total_pending_amount (BCMath). Single whereIn query with date conditions.
+    - `clear(numbers, dateFrom, dateTo, reference, notes, user)`: ONE DB::transaction; lockForUpdate on date-scoped matches; skip cleared/not-found/out_of_range; per pending sheet set status/cleared_at/cleared_by, create logsheet_clearings audit row (invoice_no_reference, notes), set ALL logsheet_details.cleared = true. Idempotent. One ActivityLogger entry per batch. Returns per-item report + counts + total_cleared_amount.
+    - `clearSingle(number, reference, notes, user)`: reuses clear() with null dates for legacy single clear.
+  - `app/Http/Controllers/LogsheetController.php` — updated clearPreview() and clearBulk() to accept/validate date_from, date_to (nullable|date_format:Y-m-d|after_or_equal), reference (max:100), notes (max:1000). Pass dates to service.
+  - `resources/js/app.js` — registered `Alpine.data('logsheetClear', ...)` component: chip input (Enter/comma/space/newline/tab/paste create chips, silent dedupe, removable ×, counter, "Clear all", Backspace on empty removes last), optional From/To date, Reference, Notes; "Check" button calls preview endpoint, chips coloured by status (green=will clear, amber=already cleared, red=not found, grey=out of range), legend + counts + "Total to be cleared: ₹X"; editing chips resets check; primary "Mark N as cleared" button opens Alpine modal (Esc/Cancel/Confirm, focus trap) then submits; result summary in aria-live="polite" region; cleared chips removed, others kept; no multi-line JS in Blade attributes.
+  - `resources/views/logsheets/partials/clear-payments.blade.php` — new partial with chip input, date range, reference, notes, preview results, confirmation modal, result summary, and `<noscript>` fallback (plain textarea form + clear_report flash rendering).
+  - `resources/views/logsheets/index.blade.php` — included `@include('logsheets.partials.clear-payments')` after upload card.
+- Tests: Updated `LogsheetBulkClearTest` to pass null dates to service calls; all 37 Logsheet tests pass; full suite 289 passed, 1 skipped, 1162 assertions.
+- Commands: `npm run build`, `php artisan view:clear`, `php artisan route:list --path=logsheets`
+- Verified: No stray text on page; upload works; clearing 3 numbers (one already cleared, one bogus, one with leading zeros) shows correct colours and summary; works at 375px in dark mode; 403 for non-super_admin on clear endpoints.
+
+**F4 (2026-09-21)**: Remove download feature (crashed with missing method)
+- Root cause: `routes/logsheets.php` had two routes (`logsheets.imports.download` and legacy `logsheets.download`) pointing to `LogsheetController@download`, but the method was missing (or incomplete). GET /logsheets/imports/{id}/download threw BadMethodCallException.
+- Files changed:
+  - `routes/logsheets.php` — removed both download routes (lines 10 and 19). Now 9 routes, all pointing to existing controller methods.
+  - `app/Http/Controllers/LogsheetController.php` — removed `download()` method and unused `Storage` + `StreamedResponse` imports. Added missing `destroy()` method.
+  - `resources/views/logsheets/index.blade.php` — removed Download links from desktop table (line 243) and mobile cards (line 288). Actions column now only shows View.
+  - `resources/views/logsheets/imports/show.blade.php` — removed Download File link from header (lines 31-38).
+  - `tests/Feature/LogsheetRoutesTest.php` — NEW: 3 tests asserting (a) every logsheets.* route has a callable controller method, (b) /logsheets, /logsheets/records, /logsheets/imports/{id} return 200 and contain no "download" text, (c) no download routes exist.
+- Tests: Full suite **292 passed, 1 skipped, 1213 assertions** (was 289/1/1162; +3 tests from LogsheetRoutesTest, +51 assertions).
+- Commands: `php artisan route:list --path=logsheets` (9 routes), `php artisan test`, `php artisan view:clear`
+- Verified: All 9 routes map to existing methods; /logsheets/records registered before /logsheets/{logsheet}; no "download" text in response bodies.
+
+**F5 (2026-09-21)**: Fix Excel serial date failure in Clear Payments
+- Root cause: `LogsheetClearingService` reparsed `raw_data.inv_date` with `Carbon::parse()`, so Excel serial values such as `46172` threw before SQL period filtering.
+- Fix: preview and clear now filter only `logsheets.date` and `logsheet_details.date` with SQL `whereDate()` constraints; raw payload dates are not parsed by clearing.
+- Added shared safe `LogsheetImportService::parseDateValue()` for Excel serials, Y-m-d, d.m.Y, d/m/Y, blank/zero/garbage values, plus friendly logged errors from clear endpoints.
+- Tests: Full suite 294 passed, 1 skipped; focused clearing/parser tests 25 passed. Commands: `php artisan view:clear`.

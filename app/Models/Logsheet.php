@@ -60,11 +60,6 @@ class Logsheet extends Model
         return $this->belongsTo(LogsheetImport::class, 'last_import_id');
     }
 
-    public function uploader(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'uploaded_by');
-    }
-
     public function clearer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cleared_by');

@@ -33,7 +33,11 @@ class LogsheetImportAggregationTest extends TestCase
 
         $file = UploadedFile::fake()->create('test.xlsx');
 
-        $this->from('/logsheets')->post('/logsheets', ['file' => $file]);
+        $this->from('/logsheets')->post('/logsheets', [
+            'file' => $file,
+            'date_from' => '2026-06-10',
+            'date_to' => '2026-06-13',
+        ]);
 
         // Verify Log Sheet 45348787 (2 consignments)
         $ls1 = Logsheet::where('log_sheet_no', '45348787')->first();
@@ -129,7 +133,11 @@ class LogsheetImportAggregationTest extends TestCase
 
         $file = UploadedFile::fake()->create('test.xlsx');
 
-        $this->from('/logsheets')->post('/logsheets', ['file' => $file]);
+        $this->from('/logsheets')->post('/logsheets', [
+            'file' => $file,
+            'date_from' => '2026-06-10',
+            'date_to' => '2026-06-13',
+        ]);
 
         $ls = Logsheet::where('log_sheet_no', '45350959')->first();
         $this->assertEquals(5999.802, (float) $ls->total_gross_wt);

@@ -5,9 +5,12 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'active', 'no.cache', 'role:super_admin'])->group(function () {
     Route::get('/logsheets', [LogsheetController::class, 'index'])->name('logsheets.index');
+    Route::get('/logsheets/records', [LogsheetController::class, 'records'])->name('logsheets.records');
+    Route::get('/logsheets/imports/{import}', [LogsheetController::class, 'importShow'])->name('logsheets.imports.show');
     Route::post('/logsheets', [LogsheetController::class, 'store'])->name('logsheets.store');
-    Route::get('/logsheets/download/{logsheetImport}', [LogsheetController::class, 'download'])->name('logsheets.download');
-    Route::get('/logsheets/{logsheet}', [LogsheetController::class, 'show'])->name('logsheets.show');
+    Route::post('/logsheets/clear/preview', [LogsheetController::class, 'clearPreview'])->name('logsheets.clear.preview');
+    Route::post('/logsheets/clear/bulk', [LogsheetController::class, 'clearBulk'])->name('logsheets.clear.bulk');
     Route::post('/logsheets/clear', [LogsheetController::class, 'clearLogsheet'])->name('logsheets.clear');
+    Route::get('/logsheets/{logsheet}', [LogsheetController::class, 'show'])->name('logsheets.show');
     Route::delete('/logsheets/{logsheet}', [LogsheetController::class, 'destroy'])->name('logsheets.destroy');
 });

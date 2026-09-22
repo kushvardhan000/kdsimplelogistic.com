@@ -411,4 +411,285 @@ Alpine.data('sortableList', (config) => ({
     },
 }));
 
+Alpine.data('logsheetUpload', () => ({
+    submitting: false,
+    fileName: null,
+    fileSize: null,
+    dateFrom: '',
+    dateTo: '',
+    presets: {
+        today: { from: '', to: '' },
+        thisMonth: { from: '', to: '' },
+        lastMonth: { from: '', to: '' }
+    },
+
+    init() {
+        const today = new Date().toISOString().split('T')[0];
+        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+        const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0];
+        const lastMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split('T')[0];
+
+        this.dateFrom = today;
+        this.dateTo = today;
+        this.presets.today = { from: today, to: today };
+        this.presets.thisMonth = { from: monthStart, to: today };
+        this.presets.lastMonth = { from: lastMonthStart, to: lastMonthEnd };
+    },
+
+    setPreset(preset) {
+        this.dateFrom = preset.from;
+        this.dateTo = preset.to;
+    },
+
+    onFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+            this.fileName = file.name;
+            this.fileSize = (file.size / 1024).toFixed(1);
+        }
+    },
+
+    clearFile() {
+        this.fileName = null;
+        this.fileSize = null;
+        this.$refs.fileInput.value = '';
+    },
+
+    submit() {
+        this.submitting = true;
+    }
+}));
+
+Alpine.data('logsheetClear', () => ({
+    chips: [],
+    dateFrom: '',
+    dateTo: '',
+    checking: false,
+    submitting: false,
+    showModal: false,
+    hasPreview: false,
+    previewError: '',
+    previewData: null,
+    previewCounts: { pending: 0, cleared: 0, not_found: 0, out_of_range: 0 },
+    previewTotalPending: '0.00',
+    result: null,
+
+    init() {
+        this.updateHiddenInput();
+    },
+
+    focusInput() {
+        this.$refs.input.focus();
+    },
+
+    handleKeydown(event) {
+        const input = event.target;
+        const value = input.value.trim();
+
+        if (event.key === 'Enter' || event.key === ',' || event.key === ';' || event.key === '|') {
+            event.preventDefault();
+            if (value) this.addChip(value);
+            input.value = '';
+        } else if (event.key === 'Backspace' && !value && this.chips.length > 0) {
+            this.removeChip(this.chips.length - 1);
+        } else if (event.key === 'Tab' && value) {
+            event.preventDefault();
+            this.addChip(value);
+            input.value = '';
+        }
+    },
+
+    handleInput(event) {
+        // Real-time input handling if needed
+    },
+
+    handlePaste(event) {
+        const text = event.clipboardData.getData('text');
+        const parts = text.split(/[\s,;|]+/).filter(s => s.trim() !== '');
+        parts.forEach(part => this.addChip(part.trim()));
+        event.preventDefault();
+    },
+
+    handleBlur() {
+        const input = this.$refs.input;
+        const value = input.value.trim();
+        if (value) {
+            this.addChip(value);
+            input.value = '';
+        }
+    },
+
+    addChip(value) {
+        const normalized = this.normalizeChip(value);
+        if (!normalized) return;
+        if (!this.chips.includes(normalized) && this.chips.length < 500) {
+            this.chips.push(normalized);
+        }
+        this.updateHiddenInput();
+    },
+
+    normalizeChip(value) {
+        let str = String(value).trim();
+        if (!str) return null;
+        str = str.replace(/^["']|["']$/g, '');
+        if (str.endsWith('.0')) str = str.slice(0, -2);
+        const isZero = /^0+(\.0+)?$/.test(str);
+        if (isZero) str = '0';
+        else {
+            str = str.replace(/^0+/, '');
+            if (!str) str = '0';
+        }
+        return str;
+    },
+
+    removeChip(index) {
+        this.chips.splice(index, 1);
+        this.updateHiddenInput();
+        this.resetPreview();
+    },
+
+    clearAllChips() {
+        this.chips = [];
+        this.updateHiddenInput();
+        this.resetPreview();
+    },
+
+    updateHiddenInput() {
+        this.$refs.numbersInput.value = JSON.stringify(this.chips);
+    },
+
+    get chipCountText() {
+        return this.chips.length + ' number' + (this.chips.length !== 1 ? 's' : '') + (this.chips.length >= 500 ? ' (max reached)' : '');
+    },
+
+    chipStatusClass(chip) {
+        if (!this.hasPreview) return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+        const item = this.previewData?.items?.find(i => i.normalized === chip);
+        if (!item) return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+        switch (item.status) {
+            case 'pending': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+            case 'cleared': return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
+            case 'not_found': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+            case 'out_of_range': return 'bg-zinc-100 text-zinc-800 dark:bg-zinc-900/30 dark:text-zinc-400';
+            default: return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
+        }
+    },
+
+    resetPreview() {
+        this.hasPreview = false;
+        this.previewError = '';
+        this.previewData = null;
+        this.previewCounts = { pending: 0, cleared: 0, not_found: 0, out_of_range: 0 };
+        this.previewTotalPending = '0.00';
+    },
+
+    async checkPreview() {
+        if (this.chips.length === 0) return;
+        this.checking = true;
+        this.previewError = '';
+
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const response = await fetch(this.$root.dataset.previewUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    numbers: this.chips,
+                    date_from: this.dateFrom || null,
+                    date_to: this.dateTo || null,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Preview failed');
+            }
+
+            this.previewData = data;
+            this.previewCounts = data.counts || { pending: 0, cleared: 0, not_found: 0, out_of_range: 0 };
+            this.previewTotalPending = data.total_pending_amount || '0.00';
+            this.hasPreview = true;
+        } catch (err) {
+            this.previewError = err.message;
+        } finally {
+            this.checking = false;
+        }
+    },
+
+    get pendingCount() {
+        return this.previewCounts?.pending || 0;
+    },
+
+    openConfirmModal() {
+        if (this.pendingCount === 0) return;
+        this.showModal = true;
+        this.$nextTick(() => {
+            const cancelBtn = this.$root.querySelector('button[aria-label="Cancel"]') || this.$root.querySelector('button:contains("Cancel")');
+            if (cancelBtn) cancelBtn.focus();
+        });
+    },
+
+    closeModal() {
+        this.showModal = false;
+    },
+
+    async confirmClear() {
+        this.submitting = true;
+        this.showModal = false;
+
+        try {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const form = this.$refs.form || document.getElementById('clear-form');
+            const formData = new FormData(form);
+            formData.delete('numbers');
+            this.chips.forEach(number => formData.append('numbers[]', number));
+
+            const response = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: formData,
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Clear failed');
+            }
+
+            this.result = data;
+            // Remove cleared chips
+            const clearedNormalized = new Set(
+                data.items
+                    .filter(i => i.status === 'cleared')
+                    .map(i => i.normalized)
+            );
+            this.chips = this.chips.filter(c => !clearedNormalized.has(c));
+            this.updateHiddenInput();
+            this.hasPreview = false;
+        } catch (err) {
+            this.previewError = err.message;
+        } finally {
+            this.submitting = false;
+        }
+    },
+
+    submitForm(event) {
+        event.preventDefault();
+        this.confirmClear();
+    },
+
+    formatAmount(amount) {
+        const num = parseFloat(amount);
+        return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+}));
+
 Alpine.start();

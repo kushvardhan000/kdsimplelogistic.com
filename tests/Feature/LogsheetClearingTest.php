@@ -50,7 +50,11 @@ class LogsheetClearingTest extends TestCase
         $file = UploadedFile::fake()->create('test.xlsx');
 
         // Import
-        $this->from('/logsheets')->post('/logsheets', ['file' => $file]);
+        $this->from('/logsheets')->post('/logsheets', [
+            'file' => $file,
+            'date_from' => '2026-06-10',
+            'date_to' => '2026-06-13',
+        ]);
         $this->assertDatabaseHas('logsheets', ['log_sheet_no' => '45350959']);
 
         $logsheet = Logsheet::where('log_sheet_no', '45350959')->first();
@@ -98,7 +102,11 @@ class LogsheetClearingTest extends TestCase
 
         $file = UploadedFile::fake()->create('test.xlsx');
 
-        $this->from('/logsheets')->post('/logsheets', ['file' => $file]);
+        $this->from('/logsheets')->post('/logsheets', [
+            'file' => $file,
+            'date_from' => '2026-06-10',
+            'date_to' => '2026-06-13',
+        ]);
 
         // Clear once
         $this->from('/logsheets')->post('/logsheets/clear', ['log_sheet_no' => '45350959'])

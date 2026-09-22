@@ -17,9 +17,15 @@ class LogsheetObserver
 
     public function deleted(Logsheet $logsheet): void
     {
+        // Soft deletes are intentionally reversible for re-import restore flows.
+        // Import cleanup happens only when the row is permanently removed.
+    }
+
+    public function forceDeleted(Logsheet $logsheet): void
+    {
         $import = $logsheet->lastImport;
         if ($import && $import->file_path) {
-            $remaining = Logsheet::where('last_import_id', $import->id)->count();
+            $remaining = Logsheet::withTrashed()->where('last_import_id', $import->id)->count();
             if ($remaining === 0) {
                 Storage::disk('public')->delete($import->file_path);
                 $import->logsheets()->forceDelete();

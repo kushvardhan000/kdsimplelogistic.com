@@ -22,11 +22,21 @@ class LogsheetImport extends Model
         'duplicate_count',
         'invalid_count',
         'status',
+        'total_amount',
+        'total_booked_amount',
+        'total_diff',
+        'total_gross_wt',
+        'out_of_range_rows',
     ];
 
     protected $casts = [
         'date_from' => 'date',
         'date_to' => 'date',
+        'total_amount' => 'decimal:2',
+        'total_booked_amount' => 'decimal:2',
+        'total_diff' => 'decimal:2',
+        'total_gross_wt' => 'decimal:3',
+        'out_of_range_rows' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

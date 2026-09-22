@@ -55,6 +55,7 @@ class LogsheetImportServiceTest extends TestCase
                         null,
                         null,
                         null,
+                        null,
                     ],
                     [
                         'Log Sheet No        ',
@@ -86,9 +87,9 @@ class LogsheetImportServiceTest extends TestCase
                     ],
                     [
                         'LS-1001',
-                        '2026-09-01',
+                        '2026-09-19',
                         'INV-001',
-                        '2026-09-01',
+                        '2026-09-19',
                         'PAY-01',
                         'Payer One',
                         'Town A',
@@ -101,8 +102,8 @@ class LogsheetImportServiceTest extends TestCase
                         'VH-01',
                         'Chennai',
                         'SAP-001',
-                        '2026-09-01',
-                        '2026-09-02',
+                        '2026-09-19',
+                        '2026-09-20',
                         'VIN-001',
                         'Route A',
                         'Town A',
@@ -114,9 +115,9 @@ class LogsheetImportServiceTest extends TestCase
                     ],
                     [
                         'LS-1001',
-                        '2026-09-01',
+                        '2026-09-19',
                         'INV-002',
-                        '2026-09-01',
+                        '2026-09-19',
                         'PAY-02',
                         'Payer Two',
                         'Town B',
@@ -129,8 +130,8 @@ class LogsheetImportServiceTest extends TestCase
                         'VH-01',
                         'Chennai',
                         'SAP-001',
-                        '2026-09-01',
-                        '2026-09-02',
+                        '2026-09-19',
+                        '2026-09-20',
                         'VIN-001',
                         'Route A',
                         'Town B',
@@ -145,12 +146,15 @@ class LogsheetImportServiceTest extends TestCase
 
         $file = UploadedFile::fake()->create('sample.xlsx');
 
-        $summary = app(LogsheetImportService::class)->import($file);
+        $summary = app(LogsheetImportService::class)->import($file, '2026-09-19', '2026-09-19');
 
         $this->assertSame(2, $summary['rows_imported']);
         $this->assertSame(1, $summary['consolidated']);
         $this->assertSame(0, $summary['duplicates']);
         $this->assertSame(0, $summary['invalid']);
+        $this->assertSame('3700.00', $summary['total_amount']);
+        $this->assertSame(0, $summary['out_of_range_rows']);
+        $this->assertNotNull($summary['import_id']);
 
         $this->assertDatabaseCount('logsheets', 1);
         $this->assertDatabaseHas('logsheets', [
