@@ -13,16 +13,17 @@
     ];
 @endphp
 
-<div
-    x-data="{ open: false }"
-    x-on:open-modal.window="if ($event.detail === '{{ $id }}') open = true"
-    x-on:close-modal.window="if ($event.detail === '{{ $id }}') open = false"
-    x-show="open"
-    x-cloak
-    class="fixed inset-0 z-50 flex items-center justify-center p-4"
-    role="dialog"
-    aria-modal="true"
->
+<template x-teleport="body">
+    <div
+        x-data="{ open: false }"
+        x-on:open-modal.window="if ($event.detail === '{{ $id }}') open = true"
+        x-on:close-modal.window="if ($event.detail === '{{ $id }}') open = false"
+        x-show="open"
+        x-cloak
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+    >
     <div x-show="open" x-transition.opacity class="absolute inset-0 bg-zinc-950/50 backdrop-blur-sm" @click="open = false"></div>
 
     <div
@@ -49,4 +50,5 @@
             </div>
         @endisset
     </div>
-</div>
+    </div>
+</template>

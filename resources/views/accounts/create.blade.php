@@ -85,7 +85,7 @@
 
                 <div x-show="selectedType === 'staff'" x-cloak x-transition>
                     <label for="aadhar_no" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Aadhar No. <span class="text-red-500">*</span></label>
-                    <input type="text" name="aadhar_no" id="aadhar_no" value="{{ old('aadhar_no') }}" maxlength="12" placeholder="XXXX XXXX XXXX" x-on:input="$el.value = $el.value.replace(/\\D/g, '').replace(/(\\d{4})(?=\\d)/g, '$1 ')" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
+                    <input type="text" name="aadhar_no" id="aadhar_no" value="{{ old('aadhar_no') }}" maxlength="14" placeholder="XXXX XXXX XXXX" inputmode="numeric" x-on:input="$el.value = $el.value.replace(/\D/g, '').slice(0, 12).replace(/(\d{4})(?=\d)/g, '$1 ')" class="mt-1.5 block w-full rounded-lg border-zinc-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 sm:text-sm">
                     <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">12-digit Aadhar number (e.g. 1234 5678 9012)</p>
                     @error('aadhar_no')
                         <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
@@ -118,7 +118,7 @@
                     @enderror
                 </div>
 
-                <div x-data='{ bankAccountNo: @json(old("bank_account_no")), bankIfscCode: @json(old("bank_ifsc_code")), bankName: @json(old("bank_name")), get bankHint() { const filled = [this.bankAccountNo, this.bankIfscCode, this.bankName].filter(v => v && v.trim()).length; return filled > 0 && filled < 3; } }' x-show="$parent.selectedType === \"fuel_station\" || $parent.selectedType === \"staff\"" x-cloak x-transition class="sm:col-span-2">
+                <div x-data='{ bankAccountNo: @json(old("bank_account_no")), bankIfscCode: @json(old("bank_ifsc_code")), bankName: @json(old("bank_name")), get bankHint() { const filled = [this.bankAccountNo, this.bankIfscCode, this.bankName].filter(v => v && v.trim()).length; return filled > 0 && filled < 3; } }' x-show="$parent.selectedType === 'fuel_station' || $parent.selectedType === 'staff'" x-cloak x-transition class="sm:col-span-2">
                     <div class="rounded-lg border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-800/40">
                         <h4 class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Bank Details</h4>
                         <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 mb-3">Optional. Provide bank details for fuel station payouts or staff salary transfers.</p>

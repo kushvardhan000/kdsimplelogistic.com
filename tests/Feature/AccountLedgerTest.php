@@ -135,6 +135,27 @@ class AccountLedgerTest extends TestCase
         ]);
     }
 
+    public function test_empty_opening_balance_defaults_both_balances_to_zero(): void
+    {
+        $this->actingAsSuperAdmin();
+        $branch = Branch::factory()->create();
+
+        $response = $this->post(route('accounts.store'), [
+            'type' => 'company_expense',
+            'name' => 'Empty Balance Expense',
+            'branch_id' => $branch->id,
+            'opening_balance' => '',
+            'is_active' => 1,
+        ]);
+
+        $response->assertRedirect(route('accounts.index'));
+        $this->assertDatabaseHas('accounts', [
+            'name' => 'Empty Balance Expense',
+            'opening_balance' => 0,
+            'current_balance' => 0,
+        ]);
+    }
+
     public function test_super_admin_can_update_account(): void
     {
         $this->actingAsSuperAdmin();

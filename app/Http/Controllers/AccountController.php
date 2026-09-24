@@ -77,12 +77,14 @@ class AccountController extends Controller
 
     public function store(StoreAccountRequest $request): RedirectResponse
     {
-        $account = DB::transaction(function () use ($request) {
+        $openingBalance = $request->validated()['opening_balance'] ?? 0;
+
+        $account = DB::transaction(function () use ($request, $openingBalance) {
             return Account::create(array_merge(
                 $request->validated(),
                 [
-                    'opening_balance' => $request->input('opening_balance', 0),
-                    'current_balance' => $request->input('opening_balance', 0),
+                    'opening_balance' => $openingBalance,
+                    'current_balance' => $openingBalance,
                     'is_active' => $request->has('is_active') ? $request->boolean('is_active') : false,
                     'created_by' => $request->user()->id,
                     'updated_by' => $request->user()->id,

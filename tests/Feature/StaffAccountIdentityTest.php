@@ -80,6 +80,19 @@ class StaffAccountIdentityTest extends TestCase
         $this->assertEquals($driver->id, $account->linked_driver_id);
     }
 
+    public function test_formatted_aadhar_number_is_normalized_before_creation(): void
+    {
+        $response = $this->post(route('accounts.store'), $this->validStaffPayload([
+            'aadhar_no' => '1234 5678 9012',
+        ]));
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('accounts', [
+            'type' => 'staff',
+            'aadhar_no' => '123456789012',
+        ]);
+    }
+
     public function test_staff_account_show_page_displays_masked_aadhar_and_license(): void
     {
         $account = Account::factory()->staff()->create([
