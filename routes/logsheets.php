@@ -13,4 +13,5 @@ Route::middleware(['auth', 'active', 'no.cache', 'role:super_admin'])->group(fun
     Route::post('/logsheets/clear', [LogsheetController::class, 'clearLogsheet'])->name('logsheets.clear');
     Route::get('/logsheets/{logsheet}', [LogsheetController::class, 'show'])->name('logsheets.show');
     Route::delete('/logsheets/{logsheet}', [LogsheetController::class, 'destroy'])->name('logsheets.destroy');
+    Route::delete('/logsheets/imports/{import}', [LogsheetController::class, 'destroyImport'])->name('logsheets.imports.destroy');
 });

@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\Logsheet;
 use App\Models\LogsheetClearing;
+use App\Models\LogsheetDetail;
 use App\Models\LogsheetRawRow;
 use Illuminate\Support\Facades\Storage;
 
@@ -11,6 +12,7 @@ class LogsheetObserver
 {
     public function deleting(Logsheet $logsheet): void
     {
+        LogsheetDetail::where('logsheet_id', $logsheet->id)->delete();
         LogsheetRawRow::where('log_sheet_no', $logsheet->log_sheet_no)->delete();
         $logsheet->clearings()->delete();
     }

@@ -114,12 +114,13 @@
                                 Status <span>{{ $sortIndicator('status') }}</span>
                             </a>
                         </th>
+                        <th class="px-6 py-3 text-center whitespace-nowrap">Out of Range</th>
                         <th class="px-6 py-3 text-right whitespace-nowrap">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
                     @forelse($logsheets as $logsheet)
-                        <tr class="transition-colors hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30">
+                        <tr class="transition-colors hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30 @if($logsheet->fully_out_of_requested_range) bg-amber-50 dark:bg-amber-900/20 @endif">
                             <td class="px-6 py-3 whitespace-nowrap">
                                 <a href="{{ route('logsheets.show', $logsheet) }}" class="font-semibold text-brand-700 hover:underline dark:text-brand-300">{{ $logsheet->log_sheet_no }}</a>
                             </td>
@@ -139,6 +140,23 @@
                                     <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
                                         <span class="h-1.5 w-1.5 rounded-full bg-amber-600"></span>
                                         Pending
+                                    </span>
+                                @endif
+                            </td>
+                            <td class="px-6 py-3 text-center whitespace-nowrap">
+                                @if($logsheet->fully_out_of_requested_range)
+                                    <span class="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                        </svg>
+                                        Yes
+                                    </span>
+                                @else
+                                    <span class="text-xs text-emerald-600 dark:text-emerald-400">
+                                        <svg class="h-3 w-3 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        No
                                     </span>
                                 @endif
                             </td>
@@ -170,10 +188,18 @@
         <!-- Cards (mobile) -->
         <div class="sm:hidden divide-y divide-zinc-200 dark:divide-zinc-800">
             @forelse($logsheets as $logsheet)
-                <div class="p-4">
+                <div class="p-4 @if($logsheet->fully_out_of_requested_range) bg-amber-50 dark:bg-amber-900/20 @endif">
                     <div class="flex flex-col gap-1 mb-3">
                         <a href="{{ route('logsheets.show', $logsheet) }}" class="font-semibold text-brand-700 hover:underline dark:text-brand-300">{{ $logsheet->log_sheet_no }}</a>
                         <span class="text-xs text-zinc-500 dark:text-zinc-400">{{ $logsheet->lastImport->date_from?->format('j M Y') ?? '—' }} &rarr; {{ $logsheet->lastImport->date_to?->format('j M Y') ?? '—' }}</span>
+                        @if($logsheet->fully_out_of_requested_range)
+                            <span class="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                </svg>
+                                Fully Out of Range
+                            </span>
+                        @endif
                     </div>
                     <div class="flex items-center justify-between">
                         <span class="font-mono font-semibold text-zinc-900 dark:text-zinc-100 {{ $logsheet->total_actual_amount > 0 ? 'text-red-600 dark:text-red-400' : '' }}">

@@ -204,6 +204,7 @@
                         <th class="px-6 py-3 text-left whitespace-nowrap">Period</th>
                         <th class="px-6 py-3 text-right whitespace-nowrap">Total Amount</th>
                         <th class="px-6 py-3 text-center whitespace-nowrap">Status</th>
+                        <th class="px-6 py-3 text-center whitespace-nowrap">Invalid Rows</th>
                         <th class="px-6 py-3 text-right whitespace-nowrap">Actions</th>
                     </tr>
                 </thead>
@@ -236,9 +237,34 @@
                                 @endphp
                                 {!! $badge !!}
                             </td>
+                            <td class="px-6 py-4 text-center whitespace-nowrap">
+                                @php
+                                    $invalidCount = $import->invalid_count ?? 0;
+                                @endphp
+                                @if($invalidCount > 0)
+                                    <a href="{{ route('logsheets.imports.show', ['import' => $import->id]) }}#invalid-rows" class="inline-flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                        </svg>
+                                        <span class="font-semibold">{{ $invalidCount }}</span>
+                                    </a>
+                                @else
+                                    <span class="inline-flex items-center gap-1 text-sm text-zinc-500 dark:text-zinc-400">
+                                        <svg class="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        <span>{{ $invalidCount }}</span>
+                                    </span>
+                                @endif
+                            </td>
                             <td class="px-6 py-4 text-right whitespace-nowrap">
                                 <div class="inline-flex items-center justify-end gap-2 text-xs">
                                     <a href="{{ route('logsheets.imports.show', ['import' => $import->id]) }}" class="text-brand-600 hover:underline dark:text-brand-500 min-h-[44px] min-w-[44px] flex items-center justify-center">View</a>
+                                    <form method="POST" action="{{ route('logsheets.imports.destroy', $import) }}" class="inline" onsubmit="return confirm('Delete this import and ALL associated data (log sheets, details, raw rows, clearings, and the uploaded file)? This cannot be undone.')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200 min-h-[44px] min-w-[44px] flex items-center justify-center">Delete</button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>
@@ -257,6 +283,7 @@
                     <tr class="border-t border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-900/50">
                         <td class="px-6 py-3 text-left font-semibold text-zinc-900 dark:text-zinc-100">Grand Total</td>
                         <td class="px-6 py-3 text-right font-mono font-semibold text-zinc-900 dark:text-zinc-100">&#8377;{{ number_format($grandTotal, 2) }}</td>
+                        <td class="px-6 py-3"></td>
                         <td class="px-6 py-3"></td>
                         <td class="px-6 py-3"></td>
                     </tr>
@@ -279,8 +306,31 @@
                         <span class="font-mono font-semibold text-zinc-900 dark:text-zinc-100">
                             <span class="{{ $import->total_amount > 0 ? 'text-red-600 dark:text-red-400' : '' }}">&#8377;{{ number_format($import->total_amount, 2) }}</span>
                         </span>
-                        <div class="flex gap-2">
+<div class="flex gap-2">
+                            @php
+                                $invalidCount = $import->invalid_count ?? 0;
+                            @endphp
+                            @if($invalidCount > 0)
+                                <a href="{{ route('logsheets.imports.show', ['import' => $import->id]) }}#invalid-rows" class="text-red-600 hover:underline dark:text-red-400 min-h-[44px] min-w-[44px] flex items-center justify-center px-3 text-xs font-medium">
+                                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                    {{ $invalidCount }} invalid
+                                </a>
+                            @else
+                                <span class="text-xs text-emerald-600 dark:text-emerald-400 min-h-[44px] min-w-[44px] flex items-center justify-center px-3">
+                                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    No invalid rows
+                                </span>
+                            @endif
                             <a href="{{ route('logsheets.imports.show', $import) }}" class="text-brand-600 hover:underline dark:text-brand-500 min-h-[44px] min-w-[44px] flex items-center justify-center px-3">View</a>
+                            <form method="POST" action="{{ route('logsheets.imports.destroy', $import) }}" class="inline" onsubmit="return confirm('Delete this import and ALL associated data (log sheets, details, raw rows, clearings, and the uploaded file)? This cannot be undone.')">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200 min-h-[44px] min-w-[44px] flex items-center justify-center px-3 text-xs">Delete</button>
+                            </form>
                         </div>
                     </div>
                 </div>

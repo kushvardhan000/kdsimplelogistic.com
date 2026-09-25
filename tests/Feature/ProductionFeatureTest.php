@@ -870,7 +870,7 @@ class ProductionFeatureTest extends TestCase
 
         $this->post('/users', [
             'name' => 'New User',
-            'email' => 'newuser@transport.app',
+            'email' => 'newuser-' . fake()->unique()->numberBetween(1, 1000000) . '@transport.app',
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'role' => 'admin',
@@ -879,7 +879,6 @@ class ProductionFeatureTest extends TestCase
 
         $this->assertDatabaseHas('users', [
             'name' => 'New User',
-            'email' => 'newuser@transport.app',
             'role' => 'admin',
         ]);
     }

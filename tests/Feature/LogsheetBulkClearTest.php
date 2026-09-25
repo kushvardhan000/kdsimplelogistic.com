@@ -9,6 +9,7 @@ use App\Models\LogsheetImport;
 use App\Models\LogsheetRawRow;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class LogsheetBulkClearTest extends TestCase
@@ -25,7 +26,7 @@ class LogsheetBulkClearTest extends TestCase
         $this->regularUser = User::factory()->create([
             'email' => 'user@sls.com',
             'password' => bcrypt('password'),
-            'role' => 'user',
+            'role' => User::ROLE_ADMIN,
         ]);
     }
 
@@ -217,8 +218,8 @@ class LogsheetBulkClearTest extends TestCase
         $this->createLogsheet('111', 'pending', 100.00);
         $this->createLogsheet('222', 'cleared', 200.00);
 
-        $this->actingAs($this->superAdmin)
-            ->postJson(route('logsheets.clear.preview'), ['numbers' => ['111', '222', '333']])
+        $this->actingAs($this->superAdmin);
+        $this->postJson(route('logsheets.clear.preview'), ['numbers' => ['111', '222', '333']])
             ->assertOk()
             ->assertJsonStructure([
                 'items',
@@ -232,10 +233,10 @@ class LogsheetBulkClearTest extends TestCase
         $this->createLogsheet('111', 'pending', 100.00);
         $this->createLogsheet('222', 'pending', 200.00);
 
-        $this->actingAs($this->superAdmin)
-            ->postJson(route('logsheets.clear.bulk'), [
-                'numbers' => ['111', '222'],
-            ])
+        $this->actingAs($this->superAdmin);
+        $this->postJson(route('logsheets.clear.bulk'), [
+            'numbers' => ['111', '222'],
+        ])
             ->assertOk()
             ->assertJsonStructure([
                 'items',
@@ -249,11 +250,10 @@ class LogsheetBulkClearTest extends TestCase
         $this->createLogsheet('111', 'pending', 100.00);
         $this->createLogsheet('222', 'pending', 200.00);
 
-        $response = $this->actingAs($this->superAdmin)
-            ->from('/logsheets')
-            ->post(route('logsheets.clear.bulk'), [
-                'numbers' => ['111', '222'],
-            ]);
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post(route('logsheets.clear.bulk'), [
+            'numbers' => ['111', '222'],
+        ]);
 
         $response->assertRedirect('/logsheets');
         $response->assertSessionHas('success');
@@ -264,10 +264,10 @@ class LogsheetBulkClearTest extends TestCase
 
     public function test_clear_bulk_validates_required_numbers(): void
     {
-        $response = $this->actingAs($this->superAdmin)
-            ->postJson(route('logsheets.clear.bulk'), [
-                'reference' => 'INV-REF',
-            ]);
+        $this->actingAs($this->superAdmin);
+        $response = $this->postJson(route('logsheets.clear.bulk'), [
+            'reference' => 'INV-REF',
+        ]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors('numbers');
@@ -275,20 +275,20 @@ class LogsheetBulkClearTest extends TestCase
 
     public function test_non_super_admin_gets_403_on_clear_bulk(): void
     {
-        $response = $this->actingAs($this->regularUser)
-            ->postJson(route('logsheets.clear.bulk'), [
-                'numbers' => ['111'],
-            ]);
+        $this->actingAs($this->regularUser);
+        $response = $this->postJson(route('logsheets.clear.bulk'), [
+            'numbers' => ['111'],
+        ]);
 
         $response->assertForbidden();
     }
 
     public function test_non_super_admin_gets_403_on_clear_preview(): void
     {
-        $response = $this->actingAs($this->regularUser)
-            ->postJson(route('logsheets.clear.preview'), [
-                'numbers' => ['111'],
-            ]);
+        $this->actingAs($this->regularUser);
+        $response = $this->postJson(route('logsheets.clear.preview'), [
+            'numbers' => ['111'],
+        ]);
 
         $response->assertForbidden();
     }
@@ -297,10 +297,9 @@ class LogsheetBulkClearTest extends TestCase
     {
         $this->createLogsheet('45350959', 'pending', 17999.41);
 
-        $this->actingAs($this->superAdmin)
-            ->from('/logsheets')
-            ->post(route('logsheets.clear'), ['log_sheet_no' => '45350959'])
-            ->assertRedirect('/logsheets')
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post(route('logsheets.clear'), ['log_sheet_no' => '45350959']);
+        $response->assertRedirect('/logsheets')
             ->assertSessionHas('success', 'Log sheet cleared successfully.');
 
         $logsheet = Logsheet::where('log_sheet_no', '45350959')->first();
@@ -311,10 +310,9 @@ class LogsheetBulkClearTest extends TestCase
     {
         $this->createLogsheet('45350959', 'pending', 17999.41);
 
-        $this->actingAs($this->superAdmin)
-            ->from('/logsheets')
-            ->post(route('logsheets.clear'), ['log_sheet_no' => '0045350959'])
-            ->assertRedirect('/logsheets')
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post(route('logsheets.clear'), ['log_sheet_no' => '0045350959']);
+        $response->assertRedirect('/logsheets')
             ->assertSessionHasNoErrors();
 
         $logsheet = Logsheet::where('log_sheet_no', '45350959')->first();
@@ -325,18 +323,16 @@ class LogsheetBulkClearTest extends TestCase
     {
         $this->createLogsheet('45350959', 'cleared', 17999.41);
 
-        $this->actingAs($this->superAdmin)
-            ->from('/logsheets')
-            ->post(route('logsheets.clear'), ['log_sheet_no' => '45350959'])
-            ->assertRedirect('/logsheets')
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post(route('logsheets.clear'), ['log_sheet_no' => '45350959']);
+        $response->assertRedirect('/logsheets')
             ->assertSessionHas('info', 'This log sheet is already cleared.');
     }
 
     public function test_legacy_single_clear_not_found_shows_error(): void
     {
-        $response = $this->actingAs($this->superAdmin)
-            ->from('/logsheets')
-            ->post(route('logsheets.clear'), ['log_sheet_no' => '99999999']);
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post(route('logsheets.clear'), ['log_sheet_no' => '99999999']);
 
         $response->assertRedirect('/logsheets');
         $response->assertSessionHasErrors('log_sheet_no');

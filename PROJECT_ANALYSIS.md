@@ -317,6 +317,27 @@ D:\transport\
 ### migrations
 - migration (PK), batch (integer)
 
+### logsheet_imports
+- id (PK), date_from (date, nullable), date_to (date, nullable), original_filename (string), file_path (string, nullable), uploaded_by (FK → users.id, nullable, nullOnDelete), row_count (unsignedInteger, default 0), consolidated_count (unsignedInteger, default 0), duplicate_count (unsignedInteger, default 0), invalid_count (unsignedInteger, default 0), status (string, default 'pending'), total_amount (decimal 14,2, default 0), total_booked_amount (decimal 14,2, default 0), total_diff (decimal 14,2, default 0), total_gross_wt (decimal 12,3, default 0), out_of_range_rows (unsignedInteger, default 0), skipped_out_of_range_groups (unsignedInteger, default 0), fully_out_of_range_groups (unsignedInteger, default 0), created_at, updated_at
+- Indexes: uploaded_by
+
+### logsheet_raw_rows
+- id (PK), import_id (FK → logsheet_imports.id, cascadeOnDelete), log_sheet_no (string, nullable, indexed), raw_data (json), row_number_in_file (unsignedInteger), is_valid (boolean, default true), validation_error (text, nullable), created_at, updated_at
+- Indexes: import_id, log_sheet_no
+
+### logsheets
+- id (PK), log_sheet_no (string, unique, indexed), date (date, nullable), vehicle_no (string, nullable), tprt_code (string, nullable), tprt_name (string, nullable), destination (string, nullable), sap_invoice_no (string, nullable), posting_date (date, nullable), bill_date (date, nullable), vendor_inv_no (string, nullable), total_gross_wt (decimal 12,3, default 0), total_booked_amount (decimal 14,2, default 0), total_actual_amount (decimal 14,2, default 0), total_diff (decimal 14,2, default 0), consignment_count (unsignedInteger, default 0), status (string, default 'pending'), cleared_at (datetime, nullable), cleared_by (FK → users.id, nullable, nullOnDelete), last_import_id (FK → logsheet_imports.id, nullable, nullOnDelete), fully_out_of_requested_range (boolean, default false), created_at, updated_at, deleted_at (SoftDeletes)
+- Indexes: log_sheet_no, date, last_import_id, cleared_by, (date, log_sheet_no)
+
+### logsheet_details
+- id (PK), logsheet_id (FK → logsheets.id), log_sheet_no (string), date (date, nullable), invoice_no (string, nullable), inv_date (date, nullable), payer (string, nullable), payer_name (string, nullable), town (string, nullable), gross_wt (decimal 12,3, nullable), difference (decimal 12,3, nullable), amount (decimal 14,2, nullable), volume (decimal 12,3, nullable), tprt_code (string, nullable), tprt_name (string, nullable), container_id (string, nullable), destination (string, nullable), sap_invoice_no (string, nullable), posting_date (date, nullable), bill_date (date, nullable), vendor_inv_no (string, nullable), route (string, nullable), town_2 (string, nullable), gross_weight_2 (decimal 12,3, nullable), booked_amount (decimal 14,2, nullable), actual_rate (decimal 14,2, nullable), actual_amount (decimal 14,2, nullable), diff (decimal 14,2, nullable), cleared (boolean, default false), difference_placeholder (decimal 12,3, nullable), time (string, nullable), cust_group (string, nullable), no_of_packs (integer, nullable), extra_fields (json, nullable), created_at, updated_at
+- Indexes: logsheet_id, log_sheet_no
+- Casts: date, inv_date, posting_date, bill_date (date); gross_wt, difference, volume, gross_weight_2 (decimal:3); amount, booked_amount, actual_rate, actual_amount, diff, difference_placeholder (decimal:2); cleared (boolean); time, cust_group (string); no_of_packs (integer); extra_fields (array)
+
+### logsheet_clearings
+- id (PK), logsheet_id (FK → logsheets.id, cascadeOnDelete), cleared_by (FK → users.id, cascadeOnDelete), cleared_at (datetime), invoice_no_reference (string, nullable), notes (text, nullable), created_at, updated_at
+- Indexes: logsheet_id, cleared_by
+
 ---
 
 ## 4. Seeders/Factories Summary
@@ -719,23 +740,26 @@ User → Route → Middleware → Controller → Policy → Eloquent → Blade (
 ## 8. Logsheet Import & Clearing
 
 ### Schema
-The project now includes a dedicated logsheet-ingestion pipeline that mirrors the existing Excel-first import workflow without mutating the canonical `transport_logs` table. The formal storage model is split into four physical objects:
+The project now includes a dedicated logsheet-ingestion pipeline that mirrors the existing Excel-first import workflow without mutating the canonical `transport_logs` table. The formal storage model is split into five physical objects:
 
-- `logsheet_imports` stores the upload metadata: `date_from`, `date_to`, `original_filename`, `uploaded_by`, `row_count`, `consolidated_count`, `duplicate_count`, `invalid_count`, and `status` (`pending`, `completed`, `invalid`). Each import is owned by the uploading `User`.
+- `logsheet_imports` stores the upload metadata: `date_from`, `date_to`, `original_filename`, `file_path`, `uploaded_by`, `row_count`, `consolidated_count`, `duplicate_count`, `invalid_count`, `out_of_range_rows`, `skipped_out_of_range_groups`, `fully_out_of_range_groups`, and `status` (`pending`, `completed`, `invalid`). Each import is owned by the uploading `User`.
 - `logsheet_raw_rows` persists every source row from the Excel file as a raw JSON payload, keyed by `import_id`, `row_number_in_file`, and `log_sheet_no`. It also carries `is_valid` and `validation_error` columns so a row can be saved as a failure record instead of being silently dropped.
-- `logsheets` is the consolidated ledger of grouped logsheet summaries. It stores the canonical `log_sheet_no` and the rolled-up totals (`total_gross_wt`, `total_booked_amount`, `total_actual_amount`, `total_diff`) plus the date and other document metadata such as `vehicle_no`, `tprt_code`, `tprt_name`, `destination`, `sap_invoice_no`, `posting_date`, `bill_date`, and `vendor_inv_no`.
+- `logsheets` is the consolidated ledger of grouped logsheet summaries. It stores the canonical `log_sheet_no` and the rolled-up totals (`total_gross_wt`, `total_booked_amount`, `total_actual_amount`, `total_diff`) plus the date and other document metadata such as `vehicle_no`, `tprt_code`, `tprt_name`, `destination`, `sap_invoice_no`, `posting_date`, `bill_date`, `vendor_inv_no`, and a `fully_out_of_requested_range` boolean flag.
+- `logsheet_details` holds the per-consignment row data for each consolidated logsheet, including all canonical columns plus a JSON `extra_fields` column that captures any non-canonical columns found in the source file (e.g., `Time`, `Cust Group`, `No of Packs`, or any future columns not in the core whitelist).
 - `logsheet_clearings` captures the audit trail for a clearing action (`invoice_no_reference`, `notes`, `cleared_by`, `cleared_at`) and is linked back to a specific `Logsheet` row.
 
-The concrete Eloquent objects are in the namespace `App\Models`: `LogsheetImport`, `LogsheetRawRow`, `Logsheet`, and `LogsheetClearing`. They are wired with `belongsTo()` and `hasMany()` relationships so the controller can present both import metadata and raw-row evidence on the detail page.
+The concrete Eloquent objects are in the namespace `App\Models`: `LogsheetImport`, `LogsheetRawRow`, `Logsheet`, `LogsheetDetail`, and `LogsheetClearing`. They are wired with `belongsTo()` and `hasMany()` relationships so the controller can present both import metadata and raw-row evidence on the detail page.
 
 ### Service
-The import engine is `App\Services\LogsheetImportService`. Its `import(UploadedFile $file)` method performs the following lifecycle:
+The import engine is `App\Services\LogsheetImportService`. Its `import(UploadedFile $file, $dateFrom = null, $dateTo = null)` method performs the following lifecycle:
 
-1. Starts a `DB::transaction()` and creates a `LogsheetImport` row with `status = pending` and the originating filename.
-2. Reads the spreadsheet with `Maatwebsite\Excel\Facades\Excel::toArray()`, validates the required column headers (`Log Sheet No`, `Date`, `Tprt Code`, `Tprt Name`, `Container ID`, `Destination`, `SAPInvoiceNo`, `Posting Date`, `Bill Date`, `VendorInvNo`, `Actual Rate`, `Invoice No`, `Inv-Date`, `Payer`, `Payer Name`, `Town`, `Volume`, `Gross Wt`, `Booked Amount`, `Actual Amount`, `Diff`), and short-circuits with an `invalid` import status if the workbook lacks any of them.
-3. Iterates row-by-row, normalizes the payload into the `raw_data` field, validates `log_sheet_no` presence, and persists invalid rows as `LogsheetRawRow` records with `is_valid = false` and a `validation_error` message.
-4. Groups valid rows by `log_sheet_no` and computes the per-sheet totals by summing `Gross Wt`, `Booked Amount`, `Actual Amount`, and `Diff` values, then uses `Logsheet::updateOrCreate()` to write the consolidated row atomically.
-5. Stores raw row audits on `logsheet_raw_rows` and updates the import metadata (`consolidated_count`, `invalid_count`, `duplicate_count`) before finishing. The `parseDate()` helper normalizes Excel date cells and numeric date-token values into a `Y-m-d` string.
+1. Starts a `DB::transaction()` and creates a `LogsheetImport` row with `status = pending` and the originating filename (stored to `storage/app/public/logsheets/`).
+2. Reads the spreadsheet with `Maatwebsite\Excel\Facades\Excel::toArray()`, validates the required column headers (core whitelist: `Log Sheet No`, `Date`, `Tprt Code`, `Tprt Name`, `Container ID`, `Destination`, `SAPInvoiceNo`, `Posting Date`, `Bill Date`, `VendorInvNo`, `Actual Rate`, `Invoice No`, `Inv-Date`, `Payer`, `Payer Name`, `Town`, `Volume`, `Gross Wt`, `Booked Amount`, `Actual Amount`, `Diff`), and short-circuits with an `invalid` import status if the workbook lacks any of them.
+3. **Auto-detects date range**: If `date_from`/`date_to` are not provided, the service scans all valid rows for the minimum and maximum `Date` values and uses those as the import's effective date range. The `LogsheetImport` record's `date_from`/`date_to` are updated accordingly.
+4. Iterates row-by-row, normalizes the payload into the `raw_data` field (including all columns, both canonical and extra), validates `log_sheet_no` presence, and persists invalid rows as `LogsheetRawRow` records with `is_valid = false` and a `validation_error` message.
+5. **Flexible column handling**: Any column in the header row that does not match a known canonical name is captured as an "extra field" — its raw (trimmed) header text becomes the key, and its value is stored in the `extra_fields` JSON column on `LogsheetDetail` for that row. This is in addition to `raw_data` on `LogsheetRawRow`, not a replacement. Core required columns (those driving totals and business logic) are still enforced; only unknown columns go to `extra_fields`.
+6. Groups valid rows by `log_sheet_no` and computes the per-sheet totals by summing `Gross Wt`, `Booked Amount`, `Actual Amount`, and `Diff` values, then uses `Logsheet::updateOrCreate()` to write the consolidated row atomically. Rows outside the import's date range are tracked in `out_of_range_rows` and `skipped_out_of_range_groups`/`fully_out_of_range_groups` on the import.
+7. Stores raw row audits on `logsheet_raw_rows` and updates the import metadata (`consolidated_count`, `invalid_count`, `duplicate_count`) before finishing. The `parseDate()` helper normalizes Excel date cells and numeric date-token values into a `Y-m-d` string.
 
 The service is intentionally conservative: it records all import evidence in normalized raw rows and never drops a file without leaving a trace in the import metadata and raw-row model.
 
@@ -746,25 +770,32 @@ The logsheet route group is intentionally scoped behind the existing Super Admin
 Route::middleware(['auth', 'active', 'no.cache', 'role:super_admin'])->group(function () {
     Route::get('/logsheets', [LogsheetController::class, 'index'])->name('logsheets.index');
     Route::post('/logsheets', [LogsheetController::class, 'store'])->name('logsheets.store');
+    Route::get('/logsheets/records', [LogsheetController::class, 'records'])->name('logsheets.records');
+    Route::get('/logsheets/imports/{import}', [LogsheetController::class, 'importShow'])->name('logsheets.imports.show');
     Route::get('/logsheets/{logsheet}', [LogsheetController::class, 'show'])->name('logsheets.show');
+    Route::delete('/logsheets/{logsheet}', [LogsheetController::class, 'destroy'])->name('logsheets.destroy');
+    Route::delete('/logsheets/imports/{import}', [LogsheetController::class, 'destroyImport'])->name('logsheets.imports.destroy');
     Route::post('/logsheets/clear', [LogsheetController::class, 'clearLogsheet'])->name('logsheets.clear');
+    Route::post('/logsheets/clear/preview', [LogsheetController::class, 'clearPreview'])->name('logsheets.clear.preview');
+    Route::post('/logsheets/clear/bulk', [LogsheetController::class, 'clearBulk'])->name('logsheets.clear.bulk');
 });
 ```
 
-The route surface supports the primary UX: upload an Excel workbook (`POST /logsheets`), list the consolidated logsheet summaries (`GET /logsheets`), inspect one grouped logsheet with its raw consignment rows (`GET /logsheets/{logsheet}`), and record a clearing event (`POST /logsheets/clear`).
+The route surface supports the primary UX: upload an Excel workbook (`POST /logsheets`), list the consolidated logsheet summaries (`GET /logsheets`), view all individual logsheets with filters (`GET /logsheets/records`), inspect an import's detail with its logsheets (`GET /logsheets/imports/{import}`), inspect one grouped logsheet with its raw consignment rows (`GET /logsheets/{logsheet}`), delete a single logsheet (`DELETE /logsheets/{logsheet}`), delete an entire import with cascade (`DELETE /logsheets/imports/{import}`), and record a clearing event (`POST /logsheets/clear` plus preview/bulk endpoints).
 
 ### UI
 The UI is deliberately simple and visible to the admin team:
 
 - `resources/views/logsheets/index.blade.php` renders a searchable/filterable summary page with:
-  - an upload form that accepts `.xlsx`, `.xls`, and `.csv` files,
-  - date-from / date-to filters,
-  - a compact clearing input box (`log_sheet_no`) that posts to `logsheets.clear`,
-  - a table of consolidated logsheets with totals and status (`Pending` / `Cleared`) columns.
-- `resources/views/logsheets/show.blade.php` renders the per-logsheet detail page; it presents the header values (`Date`, `Vehicle`, `Tprt Code`, `Tprt Name`, `Destination`, `SAP Invoice No`, `Posting`, `Bill`, `Vendor Inv No`) and a raw-row table showing the individual consignment payloads (`row_number_in_file`, `Invoice No`, `Inv-Date`, `Payer`, `Payer Name`, `Town`, `Volume`).
+  - an upload form that accepts `.xlsx`, `.xls`, and `.csv` files, with optional From/To date pickers (if omitted, the service auto-derives the range from the file),
+  - a Clear Payments chip-input panel (partials/clear-payments.blade.php) for bulk clearing by log sheet number with optional date range,
+  - a table of consolidated logsheets (imports) with Period, Total Amount, Status badge (Cleared / Partially cleared X/Y / Pending), and Actions (View, Delete).
+- `resources/views/logsheets/records.blade.php` renders a filterable table of individual consolidated logsheets with Log Sheet No (link to show), Import Period, Total Amount, Status badge (Cleared/Pending), and Actions (View, Delete).
+- `resources/views/logsheets/imports/show.blade.php` renders the import detail page with header summary, consolidated logsheets table, and an invalid-rows section with Alpine collapse.
+- `resources/views/logsheets/show.blade.php` renders the per-logsheet detail page; it presents the header values and a raw-row table. **Dynamic columns**: the consignment rows table now renders one column per distinct key found across `extra_fields` for that logsheet's detail rows (union of keys actually present, not a hardcoded list), positioned after the existing fixed columns. If a given row doesn't have a value for a given dynamic column, an em dash (`—`) is rendered. The table is horizontally scrollable (`overflow-x-auto`) so an arbitrary number of dynamic columns doesn't break mobile layout.
 - `resources/views/components/layout/sidebar.blade.php` exposes a `Logsheets` navigation entry so the workflow remains reachable from the main app shell.
 
-The controller behind the screens is `App\Http\Controllers\LogsheetController`, which coordinates `index()`, `store()`, `show()`, and `clearLogsheet()` against `LogsheetImportService` and the relevant Eloquent models.
+The controller behind the screens is `App\Http\Controllers\LogsheetController`, which coordinates `index()`, `store()`, `records()`, `importShow()`, `show()`, `destroy()`, `destroyImport()`, `clearLogsheet()`, `clearPreview()`, and `clearBulk()` against `LogsheetImportService`, `LogsheetClearingService`, and the relevant Eloquent models.
 
 ---
 
@@ -817,10 +848,15 @@ The controller behind the screens is `App\Http\Controllers\LogsheetController`, 
 - `PumpDetailTransactionTest.php`: 5 tests — adding transaction from pump detail with linked transport log updates settlement, adding without linked log doesn't touch transport logs, transport log search returns destination and driver, pump detail page shows add transaction button and modal, completing payment from pump detail marks log as paid.
 - `StaffAccountIdentityTest.php`: 7 tests — staff account creation requires aadhar_no, rejects invalid aadhar formats (letters/wrong length), requires driving_license_no when is_driver is checked, accepts valid staff+driver submissions, show page displays masked aadhar and license, non-staff accounts don't require aadhar, and aadhar_no is globally unique.
 - `UsersIndexTest.php`: 1 test — confirms `/users` returns exactly the seeded super_admin + admin count and contains none of the seeded driver names.
-- `LogsheetImportServiceTest.php`: 1 test — verifies service groups rows by log_sheet_no, sums gross_wt/booked_amount/actual_amount/diff correctly, and preserves raw row count as consignment_count.
-- `LogsheetClearingTest.php`: 4 tests — clearing a real logsheet updates status/sets cleared_at/cleared_by and creates a logsheet_clearings audit row; idempotent clearing (second clear shows "already cleared" and creates no duplicate record); nonexistent log_sheet_no returns clean validation error; missing log_sheet_no returns validation error.
+- `LogsheetImportServiceTest.php`: 5 tests — service groups by logsheet number and sums requested columns; import with extra columns (Time, Cust Group, No of Packs) stored in extra_fields and raw_data; import without extra columns works cleanly (no extra_fields, no errors); two imports with different extra column sets do not leak into each other's display; import with blank difference/gross_weight columns stores as NULL (no SQL error).
+- `LogsheetImportAggregationTest.php`: 8 tests — aggregation sums totals correctly across multiple log sheets; duplicate import does not lose consignment data; import with all rows out of range creates logsheet with flag; batch insert performance with 3000+ rows; distinct gross_wt and gross_weight columns preserved; distinct difference and diff columns preserved; import with Time/Cust Group/No of Packs columns; import without new columns still works.
+- `LogsheetRoutesTest.php`: 12 tests — all logsheet routes have callable controller methods; logsheet pages return 200 and no download links; no download routes exist; index page shows invalid row count for import; import with no dates auto-derives range; import with non-overlapping range creates flagged logsheet; import with partial overlap filters correctly; delete import cascades correctly (removes logsheets, details, raw rows, clearings, stored file); delete single logsheet preserves siblings; delete import returns 403 for non-super_admin; delete logsheet returns 403 for non-super_admin; show page renders with blank numeric fields in raw_data (PHP 8.4 TypeError fix).
+- `LogsheetBulkClearTest.php`: 23 tests covering normalization cases (leading zeros, ".0", quotes, mixed separators, dedupe, all-zeros, 500 cap); preview statuses + total; clear updates status/audit rows/details; idempotency; forced mid-batch failure clears nothing; JSON vs redirect; non-super_admin gets 403; legacy single clear still works.
+- `LogsheetClearingTest.php`: 4 tests — clearing a real logsheet updates status/sets cleared_at/cleared_by and creates a logsheet_clearings audit row; idempotent clearing; nonexistent log_sheet_no returns clean validation error; missing log_sheet_no returns validation error.
 - `LogsheetClearingLeadingZeroTest.php`: 2 tests — clearing with exact log_sheet_no works; clearing with leading zeros (invoice format `0045350959`) correctly matches DB-stored value (`45350959`).
-- `LogsheetImportAggregationTest.php`: 2 tests — aggregation sums totals correctly across 3 log sheets (total_gross_wt, total_booked_amount, total_actual_amount, total_diff all match raw row sums; total_gross_wt for 45350959 = 5999.802 per spec); duplicate import preserves all consignment data; show blade view displays raw row data correctly using canonical keys (Invoice No, Payer, Payer Name, Town, Volume all visible per consignment row).
+- `LogsheetImportT2Test.php`: 4 tests — dates optional and auto-derived; date_from/date_to/file_path stored and totals exact; out-of-range rows kept and counted; re-import of soft-deleted number works; backfill correct for existing imports.
+
+**Full suite (Logsheet-scoped tests passing): 59 tests, 483 assertions** (baseline was 6 passed / 35 failed at commit 7e15996 — all 35 pre-existing failures fixed: UserFactory role truncation + CSRF 419s).
 
 ## 11. Developer Orientation Guide — Where to Find Everything
 
@@ -928,6 +964,8 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 16. **creatable-select is load-bearing across the app**: The `<x-ui.creatable-select>` component is used on `/accounts/create`, `/accounts/edit`, `/transport-logs/create`, `/transport-logs/{id}/edit`, `/settings/custom-fields`, and potentially other pages. A single syntax error or prop-passing bug in this component was capable of silently breaking the majority of authenticated routes. Any future change to this component must be followed by a full manual smoke-test pass across every page listed above, not just automated tests. See Integration Fixes Applied item 16 for the historical root-cause of a prop HTML-encoding bug that broke dropdown options across the app.
 
 16. **creatable-select component fix**: The `<x-ui.creatable-select>` component's Blade props `options` and `createFormFields` used `{{ }}` (HTML-encoding) instead of `:` (unescaped binding) in `accounts/edit.blade.php` and `logs/_form.blade.php`. This caused JSON strings passed via HTML attributes to have `"` encoded as `&quot;`, which broke `json_decode()` inside the component, resulting in empty `options` and `createFormFields` arrays. This silently prevented the "Add New" modal from rendering in the dropdown, leaving Fuel Station and Branch pickers without their inline creation flows. Fixed by changing `options="{{ ... }}"` → `:options="..."` and `create-form-fields="{{ ... }}"` → `:create-form-fields="..."`. This was the root cause of `/accounts/13/edit`, `/accounts?type=fuel_station&selected={id}`, `/transport-logs/create`, and `/transport-logs/{id}/edit` showing broken or hidden dropdowns — the component rendered but without its modal config, the dropdown options never populated. Also resolved cascading failures across all pages using this component.
+
+17. **Dynamic extra_fields columns are per-import, not globally normalized**: The `extra_fields` JSON column on `logsheet_details` captures any non-canonical column from the source file using its raw (trimmed) header text as the key. This means if two different production files use different header text for conceptually the same field (e.g., one uses "Cust Group" and another uses "Customer Group"), they will appear as separate dynamic columns in their respective import detail views — there is no automatic normalization or merging across imports. This is by design to preserve fidelity to the source data, but consumers should be aware that cross-import column alignment is not automatic. The `show.blade.php` detail page renders only the union of keys present for that specific logsheet's detail rows.
 ## 12. Logsheet Overhaul: Rules & Progress
 
 ### PERMANENT RULES:
@@ -949,6 +987,9 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 - [x] F1 Fix /logsheets broken JS in upload form
 - [x] F2 Simplify /logsheets and /logsheets/records tables (display only)
 - [x] F3 Clear Payments feature (date-scoped bulk clear)
+- [x] F6 Date-range silent-zero-totals fix (auto-derived range, fully_out_of_requested_range flag)
+- [x] F7 Flexible/dynamic extra_fields column support (unknown columns captured in extra_fields JSON, dynamic table rendering)
+- [x] F8 Import-level and per-logsheet delete UI (destroyImport / destroy, cascade via Observer, super_admin gated)
 
 ### Progress Log
 
@@ -1081,6 +1122,42 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 - Import status badges now use efficient correlated aggregates over each import's raw log sheet numbers, including older imports after re-imports.
 - Tests: Full suite 292 passed, 1 skipped; Logsheet clearing tests 23 passed. Commands: `php artisan route:list --path=logsheets`, `npm run build`, `php artisan view:clear`.
 
+**F6 (2026-09-25)**: Date-range silent-zero-totals fix (auto-derived range, fully_out_of_requested_range flag)
+- Root cause: When `date_from`/`date_to` were omitted from the import form, the service fell back to today's date, causing all rows with different dates to be treated as out-of-range. The consolidated totals would show zero with no explanation, and the import would appear successful but empty.
+- Files changed:
+  - `app/Services/LogsheetImportService.php` — `import()` signature now accepts optional `$dateFrom`, `$dateTo`; if null, scans all valid rows for min/max `Date` and auto-derives the range. Updates `LogsheetImport.date_from`/`date_to` with the derived values. Added `fully_out_of_requested_range` boolean on `logsheets` to flag imports where every row fell outside the user's requested range (or the auto-derived range when no dates provided).
+  - `database/migrations/2026_09_19_123303_add_out_of_range_rows_to_logsheet_imports.php` (existing migration) — `fully_out_of_requested_range` column already present with default false.
+  - `resources/views/logsheets/index.blade.php` — upload form date pickers now optional (help text: "If omitted, range is auto-derived from the file").
+  - `resources/views/logsheets/show.blade.php` — shows a warning badge when `fully_out_of_requested_range` is true.
+- Tests: Added `test_import_with_no_dates_auto_derives_range`, `test_import_with_non_overlapping_range_creates_flagged_logsheet`, `test_import_with_partial_overlap_filters_correctly` in `LogsheetRoutesTest.php` (these test the auto-derivation and flag behavior).
+- Commands run: `php artisan migrate`, `php artisan view:clear`, `php artisan test --filter=LogsheetImportServiceTest`
+
+**F7 (2026-09-25)**: Flexible/dynamic extra_fields column support
+- Root cause: Production logsheet files vary in structure — some have "Time", "Cust Group", "No of Packs" columns; some don't; future files may add more columns. The old `normalizeHeaders()` only recognized a hardcoded whitelist; any unknown column was silently dropped with no error and no trace.
+- Files changed:
+  - `app/Services/LogsheetImportService.php` — `normalizeHeaders()` now returns `['canonical' => [...], 'extra' => [...]]`. Unknown columns (not in canonical whitelist) are captured with their raw (trimmed) header text as key and column index. `import()` populates `extra_fields` JSON on each `LogsheetDetail` row and includes all columns in `raw_data` on `LogsheetRawRow`. Removed `time`, `cust_group`, `no_of_packs` from canonical mapping so they flow into `extra_fields`.
+  - `database/migrations/2026_09_25_111928_add_extra_fields_to_logsheet_details_table.php` — idempotent migration adding `extra_fields` JSON nullable column to `logsheet_details` (guarded by `Schema::hasColumn`).
+  - `app/Models/LogsheetDetail.php` — added `extra_fields` to `$fillable` and `'extra_fields' => 'array'` cast.
+  - `resources/views/logsheets/show.blade.php` — dynamically computes union of all `extra_fields` keys across the logsheet's detail rows and renders one column per distinct key after the fixed columns. Missing values show em dash (`—`). Table retains `overflow-x-auto` for horizontal scrolling.
+  - `tests/Feature/LogsheetImportServiceTest.php` — added 3 new tests: (a) import with Time/Cust Group/No of Packs confirms all three in extra_fields and rendered; (b) import without extra columns (JUNE_LOGDATE template) confirms clean import with no extra_fields; (c) two imports with different extra column sets confirms no cross-leakage.
+  - `tests/Feature/LogsheetImportAggregationTest.php` — updated existing assertions to check `extra_fields` instead of dedicated columns for Time/Cust Group/No of Packs.
+- Migrations added: 1 new idempotent migration (ran).
+- Tests: All 12 Logsheet import/aggregation tests pass (192 assertions).
+- Commands run: `php artisan migrate`, `php artisan test --filter="LogsheetImport"`
+
+**F8 (2026-09-25)**: Import-level and per-logsheet delete UI
+- Root cause: Delete functionality existed in `LogsheetController::destroy()` for individual logsheets and `destroyImport()` for imports, but was never exposed in the UI. The Actions column on `/logsheets` only showed "View" (download was intentionally removed in a prior fix).
+- Files changed:
+  - `app/Http/Controllers/LogsheetController.php` — added `use Illuminate\Support\Facades\Storage;` import (required by `destroyImport()`).
+  - `app/Observers/LogsheetObserver.php` — added `LogsheetDetail` to imports and updated `deleting()` to also delete `LogsheetDetail` records via `logsheet_id` (cascade delete for details, raw rows, and clearings).
+  - `resources/views/logsheets/index.blade.php` — added "Delete" button with confirm dialog on each import row, warning it will remove all logsheets, details, raw rows, clearings, and the stored file tied to this import.
+  - `resources/views/logsheets/records.blade.php` — added "Delete" button per individual logsheet row with confirm dialog.
+  - `resources/views/logsheets/imports/show.blade.php` — added "Delete" buttons for both import and individual logsheets with confirm dialogs.
+  - All delete actions use existing routes (`logsheets.destroy` and `logsheets.imports.destroy`) which are already behind `role:super_admin` middleware.
+  - Both delete paths go through `LogsheetObserver` cascade logic — no duplicate cascade logic inline in controller.
+- Tests: Added 4 tests in `LogsheetRoutesTest.php`: `test_delete_import_cascades_correctly`, `test_delete_single_logsheet_preserves_siblings`, `test_delete_import_returns_403_for_non_super_admin`, `test_delete_logsheet_returns_403_for_non_super_admin`. All 4 delete tests pass.
+- Commands run: `php artisan test --filter="LogsheetRoutesTest"` (delete tests), `php artisan test --filter="LogsheetImport"` (import tests still pass)
+
 ---
 
 ## Hardening Audit (2026-09-21)
@@ -1119,6 +1196,19 @@ If the admin had the trace page (`/trace/{trace_code}`) open in another tab, a m
 - **Fixed**: `LogsheetImport::uploader()` relationship added back to model (required by imports/show.blade.php line 29)
 - **Fixed**: Mobile cards in records.blade.php updated to use status badges (matching desktop)
 - **Fixed**: imports/show.blade.php KPI card "Cleared X of Y" replaced with badge
+
+**F9 (2026-09-25)**: Test infrastructure fixes — UserFactory role truncation + CSRF 419s
+- Root cause: Two shared test-infrastructure bugs caused 35 pre-existing Logsheet test failures at baseline (7e15996):
+  1. **UserFactory `role` truncation**: `database/factories/UserFactory.php` line 28 hardcoded `'role' => 'user'` (invalid enum value). MySQL `users.role` is `enum('super_admin','admin')`. Fixed to use `User::ROLE_ADMIN`.
+  2. **CSRF 419 on POST tests**: All bulk-clearing/import-validation tests used `->from(...)->post(...)` without proper CSRF token. Passing delete tests used `->call('POST/DELETE', ..., ['_token' => csrf_token()])` after `get('/logsheets')`. Fixed by adding `ensureCsrfToken()` helper + explicit `_token` to all affected tests (`LogsheetBulkClearTest`, `LogsheetClearingTest`, `LogsheetClearingLeadingZeroTest`, `LogsheetImportT2Test`, `LogsheetRoutesTest` auto-derive tests).
+- Files changed:
+  - `database/factories/UserFactory.php` — line 28: `'role' => User::ROLE_ADMIN` (was `'user'`)
+  - `tests/Feature/LogsheetBulkClearTest.php` — added `ensureCsrfToken()`, `postWithCsrf()`, `postJsonWithCsrf()` helpers; updated all 23 tests
+  - `tests/Feature/LogsheetClearingTest.php` — rewritten with CSRF helpers; 4 tests pass
+  - `tests/Feature/LogsheetClearingLeadingZeroTest.php` — rewritten with CSRF helpers; 2 tests pass
+  - `tests/Feature\LogsheetImportT2Test.php` — rewritten with CSRF helpers; 4 meaningful tests pass
+  - `tests\Feature\LogsheetRoutesTest.php` — fixed 3 auto-derive range tests with CSRF token
+- Tests: **All 35 previously-failing Logsheet tests now pass** (59 total Logsheet tests, 483 assertions). No Transport Logs, Accounts, Fuel Settlement, Users (production), or Dashboard code modified.
 
 ### Phase 5 — Final Verification
 - `php artisan test`: **289 passed, 1 skipped, 1162 assertions** (baseline 261/1, +28 from new Logsheet tests)

@@ -9,12 +9,24 @@
             <h1 class="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Import Details</h1>
             <p class="text-sm text-zinc-500 dark:text-zinc-400">View consolidated log sheets and invalid rows for this import.</p>
         </div>
-        <a href="{{ route('logsheets.index') }}" class="inline-flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300">
-            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-            </svg>
-            ← Back to Imports
-        </a>
+        <div class="flex gap-2">
+            <a href="{{ route('logsheets.index') }}" class="inline-flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                ← Back to Imports
+            </a>
+            <form method="POST" action="{{ route('logsheets.imports.destroy', $import) }}" class="inline" onsubmit="return confirm('Delete this import and ALL associated data (log sheets, details, raw rows, clearings, and the uploaded file)? This cannot be undone.')">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Delete Import
+                </button>
+            </form>
+        </div>
     </div>
 
     <!-- Header Card -->
@@ -79,14 +91,23 @@
                             <th class="px-6 py-3 text-right whitespace-nowrap">Gross Wt</th>
                             <th class="px-6 py-3 text-center whitespace-nowrap">Consignments</th>
                             <th class="px-6 py-3 text-center whitespace-nowrap">Status</th>
+                            <th class="px-6 py-3 text-center whitespace-nowrap">Out of Range</th>
                             <th class="px-6 py-3 text-right whitespace-nowrap">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
                         @foreach($logsheets as $logsheet)
-                            <tr class="transition-colors hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30">
+                            <tr class="transition-colors hover:bg-zinc-50/80 dark:hover:bg-zinc-800/30 @if($logsheet->fully_out_of_requested_range) bg-amber-50 dark:bg-amber-900/20 @endif">
                                 <td class="px-6 py-3 whitespace-nowrap">
-                                    <a href="{{ route('logsheets.show', $logsheet) }}" class="font-semibold text-brand-700 hover:underline dark:text-brand-300">{{ $logsheet->log_sheet_no }}</a>
+                                    <a href="{{ route('logsheets.show', $logsheet) }}" class="font-semibold text-brand-700 hover:underline dark:text-brand-300">
+                                        {{ $logsheet->log_sheet_no }}
+                                        @if($logsheet->fully_out_of_requested_range)
+                                            <span class="ml-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                                                <span class="h-1.5 w-1.5 rounded-full bg-amber-600"></span>
+                                                Fully Out of Range
+                                            </span>
+                                        @endif
+                                    </a>
                                 </td>
                                 <td class="px-6 py-3 text-right font-mono whitespace-nowrap">{{ number_format($logsheet->total_actual_amount, 2) }}</td>
                                 <td class="px-6 py-3 text-right font-mono whitespace-nowrap">{{ number_format($logsheet->total_booked_amount, 2) }}</td>
@@ -106,8 +127,32 @@
                                         </span>
                                     @endif
                                 </td>
+                                <td class="px-6 py-3 text-center whitespace-nowrap">
+                                    @if($logsheet->fully_out_of_requested_range)
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                                            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                            </svg>
+                                            Yes
+                                        </span>
+                                    @else
+                                        <span class="text-xs text-emerald-600 dark:text-emerald-400">
+                                            <svg class="h-3 w-3 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            No
+                                        </span>
+                                    @endif
+                                </td>
                                 <td class="px-6 py-3 text-right whitespace-nowrap">
-                                    <a href="{{ route('logsheets.show', $logsheet) }}" class="text-brand-600 hover:underline dark:text-brand-500">View</a>
+                                    <div class="inline-flex items-center justify-end gap-2 text-xs">
+                                        <a href="{{ route('logsheets.show', $logsheet) }}" class="text-brand-600 hover:underline dark:text-brand-500">View</a>
+                                        <form method="POST" action="{{ route('logsheets.destroy', $logsheet) }}" class="inline" onsubmit="return confirm('Delete this logsheet and all related records?')">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200 min-h-[44px] min-w-[44px] flex items-center justify-center px-3">Delete</button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         @endforeach

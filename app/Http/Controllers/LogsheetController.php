@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class LogsheetController extends Controller
@@ -265,8 +266,8 @@ class LogsheetController extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:20480'],
-            'date_from' => ['required', 'date_format:Y-m-d'],
-            'date_to' => ['required', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ]);
 
         $file = $request->file('file');
@@ -279,10 +280,35 @@ class LogsheetController extends Controller
             return back()->withInput()->with('error', 'Import failed: ' . $e->getMessage());
         }
 
-        $successMsg = 'Imported ' . ($summary['rows_imported'] ?? 0) . ' rows into ' . ($summary['consolidated'] ?? 0) . ' consolidated log sheets. Total ₹' . ($summary['total_amount'] ?? '0.00') . '. Invalid rows: ' . ($summary['invalid'] ?? 0) . '.';
+        \Log::info('Import summary', $summary);
 
-        if (($summary['out_of_range_rows'] ?? 0) > 0) {
-            return back()->with('success', $successMsg)->with('warning', 'Out-of-range rows kept and counted: ' . $summary['out_of_range_rows']);
+        $rowsImported = $summary['rows_imported'] ?? 0;
+        $consolidated = $summary['consolidated'] ?? 0;
+        $totalAmount = $summary['total_amount'] ?? '0.00';
+        $invalid = $summary['invalid'] ?? 0;
+        $outOfRangeRows = $summary['out_of_range_rows'] ?? 0;
+        $fullyOutOfRangeGroups = $summary['fully_out_of_range_groups'] ?? 0;
+        $userProvidedRange = $summary['user_provided_range'] ?? false;
+        $detectedDateFrom = $summary['detected_date_from'] ?? null;
+        $detectedDateTo = $summary['detected_date_to'] ?? null;
+
+        $successMsg = "Imported {$rowsImported} rows into {$consolidated} consolidated log sheets. Total ₹{$totalAmount}. Invalid rows: {$invalid}.";
+
+        if ($userProvidedRange && ($outOfRangeRows > 0 || $fullyOutOfRangeGroups > 0)) {
+            $detectedRange = '';
+            if ($detectedDateFrom && $detectedDateTo) {
+                $detectedRange = "Your file contains dates from {$detectedDateFrom} to {$detectedDateTo}, ";
+            }
+            $requestedRange = "but you selected {$dateFrom} to {$dateTo} — ";
+            $outOfRangeDetails = [];
+            if ($outOfRangeRows > 0) {
+                $outOfRangeDetails[] = "{$outOfRangeRows} rows";
+            }
+            if ($fullyOutOfRangeGroups > 0) {
+                $outOfRangeDetails[] = "{$fullyOutOfRangeGroups} log sheets completely outside the range (flagged)";
+            }
+            $warningMsg = $detectedRange . $requestedRange . implode(' and ', $outOfRangeDetails) . ' fell outside this range.';
+            return back()->with('success', $warningMsg . ' ' . $successMsg);
         }
 
         return back()->with('success', $successMsg);
@@ -411,5 +437,24 @@ class LogsheetController extends Controller
         $logsheet->delete();
 
         return redirect()->route('logsheets.records')->with('success', 'Log sheet deleted successfully.');
+    }
+
+    public function destroyImport(LogsheetImport $import): \Illuminate\Http\RedirectResponse
+    {
+        // Delete the stored file
+        if ($import->file_path && Storage::disk('public')->exists($import->file_path)) {
+            Storage::disk('public')->delete($import->file_path);
+        }
+
+        // Force delete all logsheets associated with this import (will cascade to raw rows and clearings via observer)
+        $logsheets = Logsheet::withTrashed()->where('last_import_id', $import->id)->get();
+        foreach ($logsheets as $logsheet) {
+            $logsheet->forceDelete();
+        }
+
+        // Delete the import record (soft delete is fine since logsheets are force deleted)
+        $import->delete();
+
+        return redirect()->route('logsheets.index')->with('success', 'Import and all associated data deleted successfully.');
     }
 }

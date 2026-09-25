@@ -27,6 +27,8 @@ class LogsheetImport extends Model
         'total_diff',
         'total_gross_wt',
         'out_of_range_rows',
+        'skipped_out_of_range_groups',
+        'fully_out_of_range_groups',
     ];
 
     protected $casts = [
@@ -37,6 +39,8 @@ class LogsheetImport extends Model
         'total_diff' => 'decimal:2',
         'total_gross_wt' => 'decimal:3',
         'out_of_range_rows' => 'integer',
+        'skipped_out_of_range_groups' => 'integer',
+        'fully_out_of_range_groups' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

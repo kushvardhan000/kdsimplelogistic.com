@@ -14,10 +14,10 @@ class LogsheetClearingLeadingZeroTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->actingAs(User::factory()->superAdmin()->create([
+        $this->superAdmin = User::factory()->superAdmin()->create([
             'email' => 'admin@sls.com',
             'password' => bcrypt('password'),
-        ]));
+        ]);
 
         // Create a logsheet as it would be stored from Excel import (no leading zeros)
         Logsheet::create([
@@ -35,6 +35,7 @@ class LogsheetClearingLeadingZeroTest extends TestCase
 
     public function test_clearing_with_exact_log_sheet_no_works(): void
     {
+        $this->actingAs($this->superAdmin);
         $response = $this->from('/logsheets')->post('/logsheets/clear', ['log_sheet_no' => '45350959']);
         $response->assertRedirect('/logsheets');
 
@@ -44,18 +45,13 @@ class LogsheetClearingLeadingZeroTest extends TestCase
 
     public function test_clearing_with_leading_zeros_matches_stored_value(): void
     {
-        // Invoice shows "0045350959" but DB stores "45350959"
-        $response = $this->actingAs($this->getSuperAdmin())->from('/logsheets')->post('/logsheets/clear', ['log_sheet_no' => '0045350959']);
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post('/logsheets/clear', ['log_sheet_no' => '0045350959']);
         $response->assertRedirect('/logsheets');
         $response->assertSessionHasNoErrors();
 
         // Log sheet should be cleared
         $logsheet = Logsheet::where('log_sheet_no', '45350959')->first();
         $this->assertEquals('cleared', $logsheet->status);
-    }
-
-    private function getSuperAdmin(): User
-    {
-        return User::where('email', 'admin@sls.com')->first();
     }
 }

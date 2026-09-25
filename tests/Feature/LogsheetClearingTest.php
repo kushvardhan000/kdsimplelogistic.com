@@ -16,10 +16,10 @@ class LogsheetClearingTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->actingAs(User::factory()->superAdmin()->create([
+        $this->superAdmin = User::factory()->superAdmin()->create([
             'email' => 'admin@sls.com',
             'password' => bcrypt('password'),
-        ]));
+        ]);
     }
 
     public function test_clearing_a_real_logsheet_updates_status_and_creates_audit_record(): void
@@ -50,6 +50,7 @@ class LogsheetClearingTest extends TestCase
         $file = UploadedFile::fake()->create('test.xlsx');
 
         // Import
+        $this->actingAs($this->superAdmin);
         $this->from('/logsheets')->post('/logsheets', [
             'file' => $file,
             'date_from' => '2026-06-10',
@@ -67,11 +68,11 @@ class LogsheetClearingTest extends TestCase
         $logsheet->refresh();
         $this->assertEquals('cleared', $logsheet->status);
         $this->assertNotNull($logsheet->cleared_at);
-        $this->assertEquals($this->getSuperAdmin()->id, $logsheet->cleared_by);
+        $this->assertEquals($this->superAdmin->id, $logsheet->cleared_by);
 
         $this->assertDatabaseHas('logsheet_clearings', [
             'logsheet_id' => $logsheet->id,
-            'cleared_by' => $this->getSuperAdmin()->id,
+            'cleared_by' => $this->superAdmin->id,
         ]);
     }
 
@@ -102,6 +103,7 @@ class LogsheetClearingTest extends TestCase
 
         $file = UploadedFile::fake()->create('test.xlsx');
 
+        $this->actingAs($this->superAdmin);
         $this->from('/logsheets')->post('/logsheets', [
             'file' => $file,
             'date_from' => '2026-06-10',
@@ -125,20 +127,17 @@ class LogsheetClearingTest extends TestCase
 
     public function test_clearing_nonexistent_logsheet_shows_validation_error(): void
     {
-        $response = $this->actingAs($this->getSuperAdmin())->from('/logsheets')->post('/logsheets/clear', ['log_sheet_no' => '99999999']);
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post('/logsheets/clear', ['log_sheet_no' => '99999999']);
         $response->assertRedirect('/logsheets');
         $response->assertSessionHasErrors('log_sheet_no');
     }
 
     public function test_clearing_requires_log_sheet_no(): void
     {
-        $response = $this->actingAs($this->getSuperAdmin())->from('/logsheets')->post('/logsheets/clear', []);
+        $this->actingAs($this->superAdmin);
+        $response = $this->from('/logsheets')->post('/logsheets/clear', []);
         $response->assertRedirect('/logsheets');
         $response->assertSessionHasErrors('log_sheet_no');
-    }
-
-    private function getSuperAdmin(): User
-    {
-        return User::where('email', 'admin@sls.com')->first();
     }
 }

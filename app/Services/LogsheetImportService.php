@@ -30,8 +30,6 @@ class LogsheetImportService
     public function import(UploadedFile $file, ?string $dateFrom = null, ?string $dateTo = null): array
     {
         $user = Auth::user();
-        $dateFrom = $dateFrom ?? now()->toDateString();
-        $dateTo = $dateTo ?? now()->toDateString();
         $filePath = null;
 
         try {
@@ -42,18 +40,94 @@ class LogsheetImportService
                     return $this->emptyResult($dateFrom, $dateTo, $file, $user, 'The uploaded workbook is empty.');
                 }
 
+                \Log::info('LogsheetImportService: Processing sheet', ['row_count' => count($sheet)]);
+
                 $headerRow = $this->findHeaderRow($sheet);
                 if ($headerRow === null) {
                     return $this->emptyResult($dateFrom, $dateTo, $file, $user, 'Missing Log Sheet No header; cannot identify the client workbook format.');
                 }
 
                 $rawHeaders = array_values($sheet[$headerRow] ?? []);
-                $headers = $this->normalizeHeaders($rawHeaders);
+                $headerResult = $this->normalizeHeaders($rawHeaders);
+                $headers = $headerResult['canonical'];
+                $extraColumns = $headerResult['extra'];
                 $missing = collect($this->requiredColumns())->diff(array_keys($headers))->values();
 
                 if ($missing->isNotEmpty()) {
                     return $this->emptyResult($dateFrom, $dateTo, $file, $user, 'Missing required columns: ' . $missing->implode(', '));
                 }
+
+                // Parse all rows first to collect dates for auto-derivation
+                $allParsedRows = [];
+                $allDates = [];
+
+                foreach (array_slice($sheet, $headerRow + 1) as $idx => $line) {
+                    $rowNum = $headerRow + $idx + 2;
+
+                    if ($this->isBlankRow($line)) {
+                        continue;
+                    }
+
+                    $payload = [];
+                    foreach ($headers as $canonical => $headIndex) {
+                        $payload[$canonical] = $this->cellValue($line[$headIndex] ?? null);
+                    }
+
+                    // Capture extra columns
+                    $extraFields = [];
+                    foreach ($extraColumns as $extraCol) {
+                        $value = $this->cellValue($line[$extraCol['index']] ?? null);
+                        if ($value !== '' && $value !== null) {
+                            $extraFields[$extraCol['key']] = $value;
+                        }
+                    }
+                    if (!empty($extraFields)) {
+                        $payload['extra_fields'] = $extraFields;
+                    }
+
+                    // Build raw payload with ALL columns (canonical + extra) using raw header names
+                    $rawPayload = $payload; // Start with canonical payload
+                    // Add extra columns with their raw header names
+                    foreach ($extraColumns as $extraCol) {
+                        $value = $this->cellValue($line[$extraCol['index']] ?? null);
+                        if ($value !== '' && $value !== null) {
+                            $rawPayload[$extraCol['key']] = $value;
+                        }
+                    }
+                    // Remove extra_fields from raw payload (it's internal)
+                    unset($rawPayload['extra_fields']);
+
+                    $payload = $this->normalizePayload($payload);
+
+                    $rowDate = $this->parseDate($payload['date'] ?? null);
+                    if ($rowDate !== null) {
+                        $allDates[] = $rowDate;
+                    }
+
+                    $allParsedRows[] = [
+                        'rowNum' => $rowNum,
+                        'payload' => $payload,
+                        'rawPayload' => $rawPayload,
+                        'rowDate' => $rowDate,
+                    ];
+                }
+
+                // Auto-derive date range from file data if not provided
+                $userProvidedRange = $dateFrom !== null && $dateTo !== null;
+                if (!$userProvidedRange) {
+                    if (!empty($allDates)) {
+                        $dateFrom = min($allDates);
+                        $dateTo = max($allDates);
+                    } else {
+                        // Fallback to today if no valid dates found
+                        $dateFrom = now()->toDateString();
+                        $dateTo = now()->toDateString();
+                    }
+                }
+
+                // Store detected dates for flash message
+                $detectedDateFrom = !empty($allDates) ? min($allDates) : null;
+                $detectedDateTo = !empty($allDates) ? max($allDates) : null;
 
                 $filePath = $file->store('logsheets', 'public');
 
@@ -78,36 +152,31 @@ class LogsheetImportService
                 $raw = [];
                 $invalid = 0;
                 $outOfRange = 0;
+                $invalidRawRows = [];
+                $timestamp = now()->format('Y-m-d H:i:s');
 
-                foreach (array_slice($sheet, $headerRow + 1) as $idx => $line) {
-                    $rowNum = $headerRow + $idx + 2;
-
-                    if ($this->isBlankRow($line)) {
-                        continue;
-                    }
-
-                    $payload = [];
-                    foreach ($headers as $canonical => $headIndex) {
-                        $payload[$canonical] = $this->cellValue($line[$headIndex] ?? null);
-                    }
-
-                    $payload = $this->normalizePayload($payload);
+                foreach ($allParsedRows as $parsed) {
+                    $rowNum = $parsed['rowNum'];
+                    $payload = $parsed['payload'];
+                    $rawPayload = $parsed['rawPayload'];
+                    $rowDate = $parsed['rowDate'];
 
                     $logSheetNo = trim((string) ($payload['log_sheet_no'] ?? ''));
                     if ($logSheetNo === '') {
                         $invalid++;
-                        LogsheetRawRow::create([
+                        $invalidRawRows[] = [
                             'import_id' => $import->id,
                             'log_sheet_no' => null,
-                            'raw_data' => $payload,
+                            'raw_data' => json_encode($rawPayload),
                             'row_number_in_file' => $rowNum,
                             'is_valid' => false,
                             'validation_error' => 'Missing Log Sheet No',
-                        ]);
+                            'created_at' => $timestamp,
+                            'updated_at' => $timestamp,
+                        ];
                         continue;
                     }
 
-                    $rowDate = $this->parseDate($payload['date'] ?? null);
                     $inRange = $rowDate !== null && $rowDate >= $dateFrom && $rowDate <= $dateTo;
                     if (!$inRange) {
                         $outOfRange++;
@@ -116,14 +185,22 @@ class LogsheetImportService
                     $raw[] = [
                         'log_sheet_no' => $logSheetNo,
                         'payload' => $payload,
+                        'rawPayload' => $rawPayload,
                         'rowNumber' => $rowNum,
                         'in_range' => $inRange,
                     ];
                 }
 
+                if (!empty($invalidRawRows)) {
+                    DB::table('logsheet_raw_rows')->insert($invalidRawRows);
+                }
+
                 $groups = collect($raw)->groupBy('log_sheet_no');
                 $totalRowsImported = count($raw);
                 $consolidatedCount = $groups->count();
+
+                $skippedOutOfRangeGroups = 0;
+                $fullyOutOfRangeGroups = 0;
 
                 $import->update([
                     'row_count' => $totalRowsImported,
@@ -142,13 +219,18 @@ class LogsheetImportService
                 foreach ($groups as $logSheetNo => $items) {
                     $inRangeItems = collect($items)->filter(fn ($i) => $i['in_range']);
                     $outOfRangeItems = collect($items)->filter(fn ($i) => !$i['in_range']);
+                    $isFullyOutOfRange = $inRangeItems->isEmpty();
 
-                    $payloads = $inRangeItems->pluck('payload');
-                    if ($payloads->isEmpty()) {
-                        $first = $items->first()['payload'];
+                    if ($isFullyOutOfRange) {
+                        $fullyOutOfRangeGroups++;
+                        // Use ALL items for this group (not just in-range)
+                        $itemsForTotals = $items;
                     } else {
-                        $first = $payloads->first();
+                        $itemsForTotals = $inRangeItems;
                     }
+
+                    $payloads = collect($itemsForTotals)->pluck('payload');
+                    $first = $payloads->first();
 
                     $date = $this->parseDate($first['date'] ?? null);
                     $posting = $this->parseDate($first['posting_date'] ?? null);
@@ -185,9 +267,10 @@ class LogsheetImportService
                             'total_booked_amount' => $totalBooked,
                             'total_actual_amount' => $totalActual,
                             'total_diff' => $totalDiff,
-                            'consignment_count' => $inRangeItems->count(),
+                            'consignment_count' => count($itemsForTotals),
                             'status' => 'pending',
                             'last_import_id' => $import->id,
+                            'fully_out_of_requested_range' => $isFullyOutOfRange && $userProvidedRange,
                         ]);
                         $existing->save();
                         $logsheet = $existing;
@@ -207,12 +290,19 @@ class LogsheetImportService
                             'total_booked_amount' => $totalBooked,
                             'total_actual_amount' => $totalActual,
                             'total_diff' => $totalDiff,
-                            'consignment_count' => $inRangeItems->count(),
+                            'consignment_count' => count($itemsForTotals),
                             'status' => 'pending',
                             'last_import_id' => $import->id,
+                            'fully_out_of_requested_range' => $isFullyOutOfRange && $userProvidedRange,
                         ]);
                     }
 
+                    $detailRows = [];
+                    $rawRows = [];
+                    $timestamp = now()->format('Y-m-d H:i:s');
+                    $chunkSize = 500;
+
+                    // Insert ALL rows (both in-range and out-of-range) for detail/raw_rows
                     foreach ($items as $item) {
                         $payload = $item['payload'];
 
@@ -221,7 +311,7 @@ class LogsheetImportService
                         $detailPosting = $this->parseDate($payload['posting_date'] ?? null);
                         $detailBill = $this->parseDate($payload['bill_date'] ?? null);
 
-                        LogsheetDetail::create([
+                        $detailRows[] = [
                             'logsheet_id' => $logsheet->id,
                             'log_sheet_no' => $logSheetNo,
                             'date' => $detailDate,
@@ -230,8 +320,10 @@ class LogsheetImportService
                             'payer' => $payload['payer'] ?? null,
                             'payer_name' => $payload['payer_name'] ?? null,
                             'town' => $payload['town'] ?? null,
+                            // First "Gross Wt" column (authoritative for totals)
                             'gross_wt' => $payload['gross_wt'] ?? null,
-                            'difference' => $payload['diff'] ?? null,
+                            // "Diff" column (authoritative for totals, appears later in sheet as "Diff")
+                            'diff' => $payload['diff'] ?? null,
                             'amount' => $payload['amount'] ?? null,
                             'volume' => $payload['volume'] ?? null,
                             'tprt_code' => $payload['tprt_code'] ?? null,
@@ -244,22 +336,43 @@ class LogsheetImportService
                             'vendor_inv_no' => $payload['vendor_inv_no'] ?? null,
                             'route' => $payload['route'] ?? null,
                             'town_2' => $payload['town_2'] ?? null,
-                            'gross_weight_2' => $payload['gross_wt'] ?? null,
+                            // Second "Gross weight" column (appears later in sheet, kept for audit)
+                            'gross_weight_2' => $payload['gross_wt_2'] ?? null,
                             'booked_amount' => $payload['booked_amount'] ?? null,
                             'actual_rate' => $payload['actual_rate'] ?? null,
                             'actual_amount' => $payload['actual_amount'] ?? null,
-                            'diff' => $payload['diff'] ?? null,
+                            // Earlier "difference" column (appears before "Diff", kept for reference)
+                            'difference_placeholder' => $payload['difference_placeholder'] ?? null,
+                            'extra_fields' => !empty($payload['extra_fields']) ? json_encode($payload['extra_fields']) : null,
                             'cleared' => false,
-                        ]);
+                            'created_at' => $timestamp,
+                            'updated_at' => $timestamp,
+                        ];
 
-                        LogsheetRawRow::create([
+                        $rawRows[] = [
                             'import_id' => $import->id,
                             'log_sheet_no' => $logSheetNo,
-                            'raw_data' => $item['payload'],
+                            'raw_data' => json_encode($item['rawPayload']),
                             'row_number_in_file' => $item['rowNumber'],
                             'is_valid' => true,
                             'validation_error' => null,
-                        ]);
+                            'created_at' => $timestamp,
+                            'updated_at' => $timestamp,
+                        ];
+
+                        if (count($detailRows) >= $chunkSize) {
+                            \Log::info('LogsheetImportService: Chunk insert', ['detail_count' => count($detailRows), 'raw_count' => count($rawRows)]);
+                            DB::table('logsheet_details')->insert($detailRows);
+                            DB::table('logsheet_raw_rows')->insert($rawRows);
+                            $detailRows = [];
+                            $rawRows = [];
+                        }
+                    }
+
+                    if (!empty($detailRows)) {
+                        \Log::info('LogsheetImportService: Final batch insert', ['detail_count' => count($detailRows), 'raw_count' => count($rawRows)]);
+                        DB::table('logsheet_details')->insert($detailRows);
+                        DB::table('logsheet_raw_rows')->insert($rawRows);
                     }
                 }
 
@@ -270,6 +383,9 @@ class LogsheetImportService
                     'total_diff' => $grandTotalDiff,
                     'total_gross_wt' => $grandTotalGross,
                     'out_of_range_rows' => $outOfRange,
+                    'skipped_out_of_range_groups' => $skippedOutOfRangeGroups,
+                    'fully_out_of_range_groups' => $fullyOutOfRangeGroups,
+                    'consolidated_count' => $consolidatedCount,
                 ]);
 
                 return [
@@ -279,7 +395,12 @@ class LogsheetImportService
                     'invalid' => $invalid,
                     'total_amount' => $grandTotalAmount,
                     'out_of_range_rows' => $outOfRange,
+                    'skipped_out_of_range_groups' => $skippedOutOfRangeGroups,
+                    'fully_out_of_range_groups' => $fullyOutOfRangeGroups,
                     'import_id' => $import->id,
+                    'user_provided_range' => $userProvidedRange,
+                    'detected_date_from' => $detectedDateFrom,
+                    'detected_date_to' => $detectedDateTo,
                 ];
             });
         } catch (Throwable $e) {
@@ -309,6 +430,7 @@ class LogsheetImportService
             'duplicate_count' => 0,
             'invalid_count' => 0,
             'out_of_range_rows' => 0,
+            'skipped_out_of_range_groups' => 0,
             'status' => 'invalid',
             'total_amount' => '0.00',
             'total_booked_amount' => '0.00',
@@ -323,6 +445,7 @@ class LogsheetImportService
             'invalid' => 0,
             'total_amount' => '0.00',
             'out_of_range_rows' => 0,
+            'skipped_out_of_range_groups' => 0,
             'import_id' => $import->id,
             'skip' => $skip,
         ];
@@ -423,10 +546,44 @@ class LogsheetImportService
     protected function normalizeHeaders(array $rawHeaders): array
     {
         $normalized = [];
+        $extra = [];
         $townSeen = false;
+        $grossWtSeen = false;
+        $diffSeen = false; // tracks the actual "Diff" column (authoritative for totals)
+
+        // Known canonical keys (normalized tokens) - used to detect unknown columns
+        // NOTE: 'time', 'cust_group', 'no_of_packs' are intentionally OMITTED from this list
+        // so they are treated as "extra" columns and captured in extra_fields.
+        // This allows flexible handling of production logsheet variations.
+        $knownKeys = [
+            'log_sheet_no', 'logsheet_no',
+            'date',
+            'invoice_no',
+            'inv_date',
+            'payer',
+            'payer_name',
+            'town',
+            'gross_wt', 'gross_weight',
+            'difference', 'diff',
+            'amount',
+            'volume',
+            'tprt_code', 'trpt_code',
+            'tprt_name', 'trpt_name',
+            'container_id',
+            'destination',
+            'sapinvoiceno', 'sap_invoice_no',
+            'posting_date',
+            'bill_date',
+            'vendorinvno', 'vendor_inv_no',
+            'route',
+            'booked_amount',
+            'actual_rate',
+            'actual_amount',
+        ];
 
         foreach ($rawHeaders as $index => $header) {
             $key = $this->normalizeHeaderToken((string) $header);
+            $rawHeaderText = trim((string) $header);
 
             $canonical = match ($key) {
                 'log_sheet_no', 'logsheet_no' => 'log_sheet_no',
@@ -436,10 +593,10 @@ class LogsheetImportService
                 'payer' => 'payer',
                 'payer_name' => 'payer_name',
                 'town' => $townSeen ? 'town_2' : 'town',
-                'gross_wt' => 'gross_wt',
-                'gross_weight' => 'gross_wt',
-                'difference' => 'diff',
-                'diff' => 'diff',
+                'gross_wt' => $grossWtSeen ? 'gross_wt_2' : 'gross_wt',
+                'gross_weight' => $grossWtSeen ? 'gross_wt_2' : 'gross_wt',
+                'difference' => 'difference_placeholder',
+                'diff' => $diffSeen ? 'difference_placeholder' : 'diff',
                 'amount' => 'amount',
                 'volume' => 'volume',
                 'tprt_code', 'trpt_code' => 'tprt_code',
@@ -460,13 +617,28 @@ class LogsheetImportService
             if ($key === 'town') {
                 $townSeen = true;
             }
+            if ($key === 'gross_wt' || $key === 'gross_weight') {
+                $grossWtSeen = true;
+            }
+            if ($key === 'diff') {
+                $diffSeen = true;
+            }
 
             if ($canonical) {
                 $normalized[$canonical] = $index;
+            } elseif ($rawHeaderText !== '' && !in_array($key, $knownKeys, true)) {
+                // Unknown column: capture its raw (trimmed) header text and index
+                $extra[] = [
+                    'key' => $rawHeaderText,
+                    'index' => $index,
+                ];
             }
         }
 
-        return $normalized;
+        return [
+            'canonical' => $normalized,
+            'extra' => $extra,
+        ];
     }
 
     protected function normalizeHeaderToken(string $header): string
@@ -489,7 +661,7 @@ class LogsheetImportService
             }
         }
 
-        foreach (['gross_wt', 'volume', 'booked_amount', 'actual_rate', 'actual_amount', 'diff', 'amount'] as $field) {
+        foreach (['gross_wt', 'gross_wt_2', 'volume', 'booked_amount', 'actual_rate', 'actual_amount', 'diff', 'difference_placeholder', 'amount'] as $field) {
             if (isset($payload[$field])) {
                 $payload[$field] = $this->parseNumber($payload[$field]);
             }

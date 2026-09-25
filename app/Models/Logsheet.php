@@ -31,6 +31,7 @@ class Logsheet extends Model
         'cleared_at',
         'cleared_by',
         'last_import_id',
+        'fully_out_of_requested_range',
     ];
 
     protected $casts = [
@@ -43,6 +44,7 @@ class Logsheet extends Model
         'total_actual_amount' => 'decimal:2',
         'total_diff' => 'decimal:2',
         'consignment_count' => 'integer',
+        'fully_out_of_requested_range' => 'boolean',
     ];
 
     public function details(): HasMany

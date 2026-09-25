@@ -32,7 +32,7 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'name' => 'Super Admin',
-            'email' => 'superadmin@transport.app',
+            'email' => 'superadmin-' . fake()->unique()->numberBetween(1, 1000000) . '@transport.app',
             'role' => User::ROLE_SUPER_ADMIN,
         ]);
     }
